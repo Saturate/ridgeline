@@ -1,1 +1,16 @@
-target/
+# dependencies
+node_modules
+
+# build
+dist
+src-tauri/target
+
+# env
+.env
+.env.*
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
