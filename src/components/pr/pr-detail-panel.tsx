@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { usePrDetail } from "@/lib/hooks/use-pr-detail";
 import { VoteBadge } from "./vote-badge";
-import { MergeStatusBadge } from "./merge-status-badge";
+import { MergeStatusBadge, BuildStatusBadge } from "./merge-status-badge";
 import { AgeIndicator } from "./age-indicator";
 import { api } from "@/lib/api";
 import type { PrId, PolicyStatus } from "@/lib/types";
@@ -33,7 +33,7 @@ export function PrDetailPanel({ prId, onClose }: PrDetailPanelProps) {
 
   return (
     <Sheet open={prId !== null} onOpenChange={() => onClose()}>
-      <SheetContent className="w-[480px] overflow-y-auto sm:max-w-[480px]">
+      <SheetContent className="w-[480px] sm:max-w-[480px]">
         {isLoading && (
           <div className="space-y-4 pt-6">
             <Skeleton className="h-6 w-3/4" />
@@ -83,9 +83,10 @@ export function PrDetailPanel({ prId, onClose }: PrDetailPanelProps) {
                 </code>
               </div>
 
-              {data.pr.mergeStatus && (
+              <div className="flex items-center gap-2">
                 <MergeStatusBadge status={data.pr.mergeStatus} />
-              )}
+                <BuildStatusBadge status={data.buildStatus} />
+              </div>
 
               {data.diffStats && (
                 <div className="flex items-center gap-3 text-sm">

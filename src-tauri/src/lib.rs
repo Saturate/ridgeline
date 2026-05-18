@@ -7,6 +7,7 @@ mod state;
 mod util;
 
 use state::AppState;
+use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -31,7 +32,16 @@ pub fn run() {
             commands::list_projects,
             commands::open_url,
             commands::start_polling,
+            commands::get_version,
+            commands::test_notification,
         ])
+        .setup(|app| {
+            let version = app.config().version.clone().unwrap_or_default();
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_title(&format!("Ridgeline v{version}"));
+            }
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

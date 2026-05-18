@@ -109,6 +109,14 @@ export interface GeneralConfig {
   refresh_interval_secs: number;
   stale_threshold_hours: number;
   notifications_enabled: boolean;
+  notifications: NotificationConfig;
+}
+
+export interface NotificationConfig {
+  new_pr: boolean;
+  vote_changed: boolean;
+  waiting_for_author: boolean;
+  build_failed: boolean;
 }
 
 export type ProviderConfig = {

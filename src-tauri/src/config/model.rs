@@ -16,6 +16,8 @@ pub struct GeneralConfig {
     pub stale_threshold_hours: u64,
     #[serde(default = "default_true")]
     pub notifications_enabled: bool,
+    #[serde(default)]
+    pub notifications: NotificationConfig,
 }
 
 impl Default for GeneralConfig {
@@ -24,6 +26,30 @@ impl Default for GeneralConfig {
             refresh_interval_secs: default_refresh_interval(),
             stale_threshold_hours: default_stale_threshold(),
             notifications_enabled: true,
+            notifications: NotificationConfig::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NotificationConfig {
+    #[serde(default = "default_true")]
+    pub new_pr: bool,
+    #[serde(default = "default_true")]
+    pub vote_changed: bool,
+    #[serde(default = "default_true")]
+    pub waiting_for_author: bool,
+    #[serde(default = "default_true")]
+    pub build_failed: bool,
+}
+
+impl Default for NotificationConfig {
+    fn default() -> Self {
+        Self {
+            new_pr: true,
+            vote_changed: true,
+            waiting_for_author: true,
+            build_failed: true,
         }
     }
 }

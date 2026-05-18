@@ -1,0 +1,82 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump type (or leave empty for auto-detect from commits)"
+        required: false
+        type: choice
+        options:
+          - ""
+          - patch
+          - minor
+          - major
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+      tag: ${{ steps.bump.outputs.tag }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install git-cliff
+        uses: taiki-e/install-action@v2
+        with:
+          tool: git-cliff
+
+      - name: Determine next version
+        id: bump
+        run: |
+          if [ -n "${{ inputs.bump }}" ]; then
+            VERSION=$(git-cliff --bumped-version --bump "${{ inputs.bump }}")
+          else
+            VERSION=$(git-cliff --bumped-version)
+          fi
+          echo "version=${VERSION#v}" >> "$GITHUB_OUTPUT"
+          echo "tag=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Next version: $VERSION"
+
+      - name: Generate changelog
+        run: git-cliff --tag "${{ steps.bump.outputs.tag }}" -o CHANGELOG.md
+
+      - name: Update Cargo.toml version
+        run: sed -i 's/^version = ".*"/version = "${{ steps.bump.outputs.version }}"/' src-tauri/Cargo.toml
+
+      - name: Update package.json version
+        run: |
+          cd .
+          node -e "
+            const pkg = require('./package.json');
+            pkg.version = '${{ steps.bump.outputs.version }}';
+            require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+
+      - name: Update tauri.conf.json version
+        run: |
+          node -e "
+            const conf = require('./src-tauri/tauri.conf.json');
+            conf.version = '${{ steps.bump.outputs.version }}';
+            require('fs').writeFileSync('src-tauri/tauri.conf.json', JSON.stringify(conf, null, 2) + '\n');
+          "
+
+      - name: Commit and tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md src-tauri/Cargo.toml package.json src-tauri/tauri.conf.json
+          git commit -m "chore(release): ${{ steps.bump.outputs.tag }}"
+          git tag "${{ steps.bump.outputs.tag }}"
+          git push origin master --tags
+
+  build:
+    needs: version
+    uses: ./.github/workflows/build.yml
+    secrets: inherit

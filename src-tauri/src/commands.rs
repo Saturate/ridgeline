@@ -1,10 +1,12 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
+use tauri_plugin_notification::NotificationExt;
 
-use crate::config::model::{Config, ProviderConfig};
+use crate::config::model::{Config, NotificationConfig, ProviderConfig};
 use crate::config::{credentials, loader};
+use crate::notifications::tracker::Change;
 use crate::polling::error::PollResult;
 use crate::polling::poller::Poller;
 use crate::providers::azure_devops::AzureDevOpsProvider;
@@ -117,6 +119,11 @@ pub async fn list_projects(
 }
 
 #[tauri::command]
+pub fn get_version(app: AppHandle) -> String {
+    app.config().version.clone().unwrap_or_default()
+}
+
+#[tauri::command]
 pub async fn open_url(url: String) -> Result<(), String> {
     open::that(&url).map_err(|e| e.to_string())
 }
@@ -127,6 +134,8 @@ pub async fn start_polling(app: AppHandle, state: State<'_, AppState>) -> Result
     let handle = app.clone();
 
     tokio::spawn(async move {
+        let mut first_poll = true;
+
         loop {
             let result = {
                 let poller = state.poller().read().await;
@@ -139,7 +148,7 @@ pub async fn start_polling(app: AppHandle, state: State<'_, AppState>) -> Result
                 }
             };
 
-            let changes = {
+            {
                 let all_prs: Vec<_> = result
                     .reviewing
                     .iter()
@@ -147,14 +156,31 @@ pub async fn start_polling(app: AppHandle, state: State<'_, AppState>) -> Result
                     .cloned()
                     .collect();
                 let mut tracker = state.change_tracker().write().await;
-                tracker.detect_changes(&all_prs)
-            };
+                let changes = tracker.detect_changes(&all_prs);
+
+                if !first_poll {
+                    let notif_config = {
+                        let config = state.config().read().await;
+                        (config.general.notifications_enabled, config.general.notifications.clone())
+                    };
+
+                    for change in &changes {
+                        let _ = handle.emit("pr-change", change);
+
+                        if notif_config.0 && should_notify(change, &notif_config.1) {
+                            let _ = handle
+                                .notification()
+                                .builder()
+                                .title(change.notification_title())
+                                .body(change.notification_body())
+                                .show();
+                        }
+                    }
+                }
+            }
 
             let _ = handle.emit("poll-update", &result);
-
-            for change in &changes {
-                let _ = handle.emit("pr-change", change);
-            }
+            first_poll = false;
 
             let interval = {
                 let config = state.config().read().await;
@@ -165,4 +191,27 @@ pub async fn start_polling(app: AppHandle, state: State<'_, AppState>) -> Result
     });
 
     Ok(())
+}
+
+fn should_notify(change: &Change, config: &NotificationConfig) -> bool {
+    match change {
+        Change::NewPr { .. } => config.new_pr,
+        Change::VoteChanged { new_vote, .. } => {
+            if *new_vote == crate::providers::types::Vote::WaitingForAuthor {
+                config.waiting_for_author
+            } else {
+                config.vote_changed
+            }
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn test_notification(app: AppHandle) -> Result<(), String> {
+    app.notification()
+        .builder()
+        .title("Ridgeline")
+        .body("Notifications are working!")
+        .show()
+        .map_err(|e| e.to_string())
 }

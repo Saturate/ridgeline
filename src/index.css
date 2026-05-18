@@ -101,8 +101,26 @@
   * {
     @apply border-border;
   }
+  html, body, #root {
+    @apply h-full overflow-hidden;
+  }
   body {
     @apply bg-background text-foreground;
     font-family: system-ui, -apple-system, sans-serif;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: oklch(0.45 0.01 260 / 0.4);
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: oklch(0.45 0.01 260 / 0.6);
   }
 }

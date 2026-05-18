@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { Config, PollResult, PrDetail, PrId } from "./types";
 
 export const api = {
+  getVersion: () => invoke<string>("get_version"),
   getConfig: () => invoke<Config>("get_config"),
   saveConfig: (config: Config) => invoke<void>("save_config", { config }),
   storeToken: (providerName: string, token: string) =>
@@ -17,4 +18,5 @@ export const api = {
     invoke<string[]>("list_projects", { providerName, url, token }),
   openUrl: (url: string) => invoke<void>("open_url", { url }),
   startPolling: () => invoke<void>("start_polling"),
+  testNotification: () => invoke<void>("test_notification"),
 };

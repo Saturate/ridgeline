@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Settings, RefreshCw, Mountain } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dashboard } from "@/components/layout/dashboard";
@@ -14,6 +15,7 @@ export function AppLayout() {
   const [initError, setInitError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const config = useConfig();
+  const { data: version } = useQuery({ queryKey: ["version"], queryFn: api.getVersion });
 
   const initialize = useCallback(async () => {
     try {
@@ -86,6 +88,9 @@ export function AppLayout() {
         <div className="flex items-center gap-2">
           <Mountain className="h-5 w-5 text-primary" />
           <h1 className="text-sm font-semibold">Ridgeline</h1>
+          {version && (
+            <span className="text-xs text-muted-foreground">v{version}</span>
+          )}
         </div>
         <div className="flex items-center gap-1">
           <Button
@@ -112,7 +117,7 @@ export function AppLayout() {
         </div>
       </header>
 
-      <main className="flex-1 overflow-hidden">
+      <main className="flex-1 overflow-y-auto">
         {view === "settings" || needsSetup ? (
           <SettingsPage
             onDone={() => {

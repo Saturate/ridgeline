@@ -2,12 +2,15 @@ import { Inbox } from "lucide-react";
 import { PrRow } from "./pr-row";
 import type { PrId, PullRequest } from "@/lib/types";
 
+export type PrListVariant = "reviewing" | "authored";
+
 interface PrListProps {
   prs: PullRequest[];
+  variant: PrListVariant;
   onSelect: (prId: PrId) => void;
 }
 
-export function PrList({ prs, onSelect }: PrListProps) {
+export function PrList({ prs, variant, onSelect }: PrListProps) {
   if (prs.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center gap-2 py-16 text-muted-foreground">
@@ -20,7 +23,12 @@ export function PrList({ prs, onSelect }: PrListProps) {
   return (
     <div className="divide-y">
       {prs.map((pr) => (
-        <PrRow key={prKey(pr)} pr={pr} onClick={() => onSelect(pr.id)} />
+        <PrRow
+          key={prKey(pr)}
+          pr={pr}
+          variant={variant}
+          onClick={() => onSelect(pr.id)}
+        />
       ))}
     </div>
   );

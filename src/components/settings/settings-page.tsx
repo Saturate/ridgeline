@@ -1,13 +1,14 @@
 import { useState } from "react";
-import { Plus, Trash2, Pencil } from "lucide-react";
+import { Bell, Plus, Trash2, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { useConfig, useSaveConfig } from "@/lib/hooks/use-config";
+import { api } from "@/lib/api";
 import { ProviderForm } from "./provider-form";
-import type { Config, ProviderConfig } from "@/lib/types";
+import type { Config, NotificationConfig, ProviderConfig } from "@/lib/types";
 
 interface SettingsPageProps {
   onDone: () => void;
@@ -48,6 +49,16 @@ export function SettingsPage({ onDone }: SettingsPageProps) {
     saveConfig.mutate({
       ...config,
       general: { ...config.general, [field]: value },
+    });
+  };
+
+  const handleSaveNotification = (field: keyof NotificationConfig, value: boolean) => {
+    saveConfig.mutate({
+      ...config,
+      general: {
+        ...config.general,
+        notifications: { ...config.general.notifications, [field]: value },
+      },
     });
   };
 
@@ -178,11 +189,85 @@ export function SettingsPage({ onDone }: SettingsPageProps) {
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <CardTitle className="text-base">Notifications</CardTitle>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => api.testNotification()}
+          >
+            <Bell className="mr-1 h-3.5 w-3.5" />
+            Test
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <NotificationToggle
+            label="New pull requests"
+            description="When a new PR appears in your feed"
+            checked={config.general.notifications.new_pr}
+            onChange={(v) => handleSaveNotification("new_pr", v)}
+          />
+          <Separator />
+          <NotificationToggle
+            label="Vote changes"
+            description="When a reviewer approves, rejects, or changes their vote"
+            checked={config.general.notifications.vote_changed}
+            onChange={(v) => handleSaveNotification("vote_changed", v)}
+          />
+          <Separator />
+          <NotificationToggle
+            label="Waiting for author"
+            description="When a reviewer requests changes on your PR"
+            checked={config.general.notifications.waiting_for_author}
+            onChange={(v) => handleSaveNotification("waiting_for_author", v)}
+          />
+          <Separator />
+          <NotificationToggle
+            label="Build failures"
+            description="When a build fails on a PR you're involved with"
+            checked={config.general.notifications.build_failed}
+            onChange={(v) => handleSaveNotification("build_failed", v)}
+          />
+        </CardContent>
+      </Card>
+
       {config.providers.length > 0 && (
         <div className="flex justify-end">
           <Button onClick={onDone}>Done</Button>
         </div>
       )}
     </div>
+  );
+}
+
+function NotificationToggle({
+  label,
+  description,
+  checked,
+  onChange,
+}: {
+  label: string;
+  description: string;
+  checked: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <label className="flex cursor-pointer items-center justify-between">
+      <div>
+        <p className="text-sm font-medium">{label}</p>
+        <p className="text-xs text-muted-foreground">{description}</p>
+      </div>
+      <button
+        role="switch"
+        aria-checked={checked}
+        onClick={() => onChange(!checked)}
+        className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${checked ? "bg-primary" : "bg-input"}`}
+      >
+        <span
+          className={`inline-block h-4 w-4 rounded-full bg-background shadow-sm transition-transform ${checked ? "translate-x-4" : "translate-x-0.5"}`}
+        />
+      </button>
+    </label>
   );
 }
