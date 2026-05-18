@@ -37,4 +37,4 @@ Releases use [git-cliff](https://git-cliff.org) for changelog generation. Trigge
 
 ## License
 
-MIT
+[AGPL-3.0](LICENSE)
