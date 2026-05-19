@@ -11,6 +11,8 @@ interface PrListProps {
   indicatorMode: ProviderIndicator;
   warningHours?: number;
   dangerHours?: number;
+  showProjectName?: boolean;
+  parseCC?: boolean;
   onSelect: (prId: PrId) => void;
 }
 
@@ -21,6 +23,8 @@ export function PrList({
   indicatorMode,
   warningHours,
   dangerHours,
+  showProjectName,
+  parseCC,
   onSelect,
 }: PrListProps) {
   if (prs.length === 0) {
@@ -43,6 +47,8 @@ export function PrList({
           indicatorMode={indicatorMode}
           warningHours={warningHours}
           dangerHours={dangerHours}
+          showProjectName={showProjectName}
+          parseCC={parseCC}
           onClick={() => onSelect(pr.id)}
         />
       ))}

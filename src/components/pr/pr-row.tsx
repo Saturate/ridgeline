@@ -1,4 +1,5 @@
 import { Clock, ExternalLink, FileEdit, GitBranch } from "lucide-react";
+import { parseConventionalCommit, getTypeColor } from "@/lib/conventional-commit";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,6 +23,8 @@ interface PrRowProps {
   indicatorMode: ProviderIndicator;
   warningHours?: number;
   dangerHours?: number;
+  showProjectName?: boolean;
+  parseCC?: boolean;
   onClick: () => void;
 }
 
@@ -32,8 +35,11 @@ export function PrRow({
   indicatorMode,
   warningHours,
   dangerHours,
+  showProjectName = true,
+  parseCC = false,
   onClick,
 }: PrRowProps) {
+  const cc = parseCC ? parseConventionalCommit(pr.title) : null;
   return (
     <div
       className="relative flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-accent/50"
@@ -61,7 +67,9 @@ export function PrRow({
               </Tooltip>
             </TooltipProvider>
           )}
-          <span className="truncate text-sm font-medium">{pr.title}</span>
+          <span className="truncate text-sm font-medium">
+            {cc ? cc.description : pr.title}
+          </span>
           {pr.isDraft && (
             <Badge variant="outline" className="shrink-0 text-xs">
               <FileEdit className="mr-1 h-3 w-3" />
@@ -70,9 +78,31 @@ export function PrRow({
           )}
         </div>
 
-        <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+        {cc && (
+          <div className="mt-0.5 flex items-center gap-1">
+            <span
+              className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium ${getTypeColor(cc.type)}`}
+            >
+              {cc.type}
+            </span>
+            {cc.scope && (
+              <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                {cc.scope}
+              </span>
+            )}
+            {cc.breaking && (
+              <span className="rounded bg-red-500/20 px-1.5 py-0.5 text-[10px] font-medium text-red-600 dark:text-red-400">
+                breaking
+              </span>
+            )}
+          </div>
+        )}
+
+        <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
           <span className="font-medium text-foreground/70">
-            {pr.repository.project}/{pr.repository.name}
+            {showProjectName
+              ? `${pr.repository.project}/${pr.repository.name}`
+              : pr.repository.name}
           </span>
           <span>#{pr.id.number}</span>
           {variant === "reviewing" && (

@@ -24,6 +24,10 @@ pub struct GeneralConfig {
     pub age_warning_hours: u64,
     #[serde(default = "default_danger_hours")]
     pub age_danger_hours: u64,
+    #[serde(default = "default_true")]
+    pub show_project_name: bool,
+    #[serde(default)]
+    pub parse_conventional_commits: bool,
 }
 
 impl Default for GeneralConfig {
@@ -36,6 +40,8 @@ impl Default for GeneralConfig {
             provider_indicator: ProviderIndicator::default(),
             age_warning_hours: default_warning_hours(),
             age_danger_hours: default_danger_hours(),
+            show_project_name: true,
+            parse_conventional_commits: false,
         }
     }
 }

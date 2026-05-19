@@ -48,6 +48,8 @@ export function Dashboard({ initialized, initError }: DashboardProps) {
   const indicatorMode = config?.general.provider_indicator ?? "border";
   const warningHours = config?.general.age_warning_hours ?? 48;
   const dangerHours = config?.general.age_danger_hours ?? 144;
+  const showProjectName = config?.general.show_project_name ?? true;
+  const parseCC = config?.general.parse_conventional_commits ?? false;
 
   const allProviders = useMemo(() => {
     if (!data) return [];
@@ -213,10 +215,10 @@ export function Dashboard({ initialized, initError }: DashboardProps) {
 
         <ScrollArea className="flex-1">
           <TabsContent value="reviewing" className="m-0">
-            <PrList prs={reviewing} variant="reviewing" providerColors={providerColors} indicatorMode={indicatorMode} warningHours={warningHours} dangerHours={dangerHours} onSelect={setSelectedPrId} />
+            <PrList prs={reviewing} variant="reviewing" providerColors={providerColors} indicatorMode={indicatorMode} warningHours={warningHours} dangerHours={dangerHours} showProjectName={showProjectName} parseCC={parseCC} onSelect={setSelectedPrId} />
           </TabsContent>
           <TabsContent value="authored" className="m-0">
-            <PrList prs={authored} variant="authored" providerColors={providerColors} indicatorMode={indicatorMode} warningHours={warningHours} dangerHours={dangerHours} onSelect={setSelectedPrId} />
+            <PrList prs={authored} variant="authored" providerColors={providerColors} indicatorMode={indicatorMode} warningHours={warningHours} dangerHours={dangerHours} showProjectName={showProjectName} parseCC={parseCC} onSelect={setSelectedPrId} />
           </TabsContent>
         </ScrollArea>
       </Tabs>

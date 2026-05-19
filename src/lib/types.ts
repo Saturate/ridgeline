@@ -117,6 +117,8 @@ export interface GeneralConfig {
   provider_indicator: ProviderIndicator;
   age_warning_hours: number;
   age_danger_hours: number;
+  show_project_name: boolean;
+  parse_conventional_commits: boolean;
 }
 
 export interface NotificationConfig {

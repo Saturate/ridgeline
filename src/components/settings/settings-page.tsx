@@ -212,6 +212,20 @@ export function SettingsPage({ onDone }: SettingsPageProps) {
               }
             />
           </div>
+          <Separator />
+          <NotificationToggle
+            label="Show project name"
+            description="Show project/repo or just repo name in PR rows"
+            checked={config.general.show_project_name}
+            onChange={(v) => handleSaveGeneral("show_project_name", v)}
+          />
+          <Separator />
+          <NotificationToggle
+            label="Parse conventional commits"
+            description="Show type and scope badges for conventional commit titles"
+            checked={config.general.parse_conventional_commits}
+            onChange={(v) => handleSaveGeneral("parse_conventional_commits", v)}
+          />
         </CardContent>
       </Card>
 
