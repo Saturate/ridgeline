@@ -9,6 +9,8 @@ interface PrListProps {
   variant: PrListVariant;
   providerColors: Record<string, string>;
   indicatorMode: ProviderIndicator;
+  warningHours?: number;
+  dangerHours?: number;
   onSelect: (prId: PrId) => void;
 }
 
@@ -17,6 +19,8 @@ export function PrList({
   variant,
   providerColors,
   indicatorMode,
+  warningHours,
+  dangerHours,
   onSelect,
 }: PrListProps) {
   if (prs.length === 0) {
@@ -37,6 +41,8 @@ export function PrList({
           variant={variant}
           providerColor={providerColors[pr.id.provider]}
           indicatorMode={indicatorMode}
+          warningHours={warningHours}
+          dangerHours={dangerHours}
           onClick={() => onSelect(pr.id)}
         />
       ))}

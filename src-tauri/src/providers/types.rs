@@ -45,6 +45,8 @@ pub struct PullRequest {
     pub repository: Repository,
     pub labels: Vec<String>,
     pub merge_status: Option<MergeStatus>,
+    pub build_status: Option<BuildStatus>,
+    pub source_commit_id: Option<String>,
     pub web_url: String,
 }
 

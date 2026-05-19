@@ -20,6 +20,8 @@ interface PrRowProps {
   variant: PrListVariant;
   providerColor?: string;
   indicatorMode: ProviderIndicator;
+  warningHours?: number;
+  dangerHours?: number;
   onClick: () => void;
 }
 
@@ -28,6 +30,8 @@ export function PrRow({
   variant,
   providerColor,
   indicatorMode,
+  warningHours,
+  dangerHours,
   onClick,
 }: PrRowProps) {
   return (
@@ -112,8 +116,8 @@ export function PrRow({
           </>
         )}
         <MergeStatusBadge status={pr.mergeStatus} />
-        <BuildStatusBadge status={null} />
-        <AgeIndicator createdAt={pr.createdAt} />
+        <BuildStatusBadge status={pr.buildStatus} />
+        <AgeIndicator createdAt={pr.createdAt} variant={variant} warningHours={warningHours} dangerHours={dangerHours} />
         <Button
           variant="ghost"
           size="icon"

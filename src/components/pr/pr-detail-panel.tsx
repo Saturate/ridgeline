@@ -69,7 +69,7 @@ export function PrDetailPanel({ prId, onClose }: PrDetailPanelProps) {
                 <span className="font-medium">
                   {data.pr.author.displayName}
                 </span>
-                <AgeIndicator createdAt={data.pr.createdAt} />
+                <AgeIndicator createdAt={data.pr.createdAt} variant="authored" />
               </div>
 
               <div className="flex items-center gap-2 text-sm">

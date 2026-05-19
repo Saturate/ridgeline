@@ -179,6 +179,8 @@ pub async fn start_polling(app: AppHandle, state: State<'_, AppState>) -> Result
                 }
             }
 
+            let result = enrich_authored_build_status(result, &state).await;
+
             let _ = handle.emit("poll-update", &result);
             first_poll = false;
 
@@ -191,6 +193,87 @@ pub async fn start_polling(app: AppHandle, state: State<'_, AppState>) -> Result
     });
 
     Ok(())
+}
+
+async fn enrich_authored_build_status(
+    mut result: PollResult,
+    state: &AppState,
+) -> PollResult {
+    use crate::providers::types::BuildStatus;
+    use crate::state::CachedBuildStatus;
+
+    let providers = state.providers().read().await;
+    let mut cache = state.build_cache().write().await;
+
+    let all_prs = result
+        .authored
+        .iter_mut()
+        .chain(result.reviewing.iter_mut());
+
+    for pr in all_prs {
+        let pr_key = format!("{}:{}", pr.id, pr.source_commit_id.as_deref().unwrap_or(""));
+        let commit_id = pr.source_commit_id.clone().unwrap_or_default();
+
+        // Check cache — skip fetch if source commit hasn't changed
+        if let Some(cached) = cache.get(&pr.id.to_string()) {
+            if cached.source_commit_id == commit_id {
+                pr.build_status = Some(cached.status.clone());
+                continue;
+            }
+        }
+
+        // Fetch policy evaluations for this PR
+        let provider = providers
+            .iter()
+            .find(|(p, _)| p.name() == pr.id.provider);
+
+        if let Some((provider, _)) = provider {
+            if let Ok(detail) = provider.get_detail(&pr.id).await {
+                let build_status = derive_build_status(&detail.policies);
+                if !commit_id.is_empty() {
+                    cache.insert(
+                        pr.id.to_string(),
+                        CachedBuildStatus {
+                            source_commit_id: commit_id,
+                            status: build_status.clone(),
+                        },
+                    );
+                }
+                pr.build_status = Some(build_status);
+            }
+        }
+    }
+
+    result
+}
+
+fn derive_build_status(
+    policies: &[crate::providers::types::PolicyStatus],
+) -> crate::providers::types::BuildStatus {
+    use crate::providers::types::{BuildStatus, PolicyEvaluation};
+
+    let build_policies: Vec<_> = policies
+        .iter()
+        .filter(|p| {
+            let name = p.name.to_lowercase();
+            name.contains("build") || name.contains("pipeline") || name.contains("ci")
+        })
+        .collect();
+
+    if build_policies.is_empty() {
+        return BuildStatus::NotStarted;
+    }
+
+    if build_policies.iter().any(|p| p.status == PolicyEvaluation::Rejected) {
+        return BuildStatus::Failed;
+    }
+    if build_policies
+        .iter()
+        .any(|p| p.status == PolicyEvaluation::Running || p.status == PolicyEvaluation::Queued)
+    {
+        return BuildStatus::InProgress;
+    }
+    BuildStatus::Succeeded
 }
 
 fn should_notify(change: &Change, config: &NotificationConfig) -> bool {

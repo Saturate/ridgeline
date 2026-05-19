@@ -20,6 +20,10 @@ pub struct GeneralConfig {
     pub notifications: NotificationConfig,
     #[serde(default)]
     pub provider_indicator: ProviderIndicator,
+    #[serde(default = "default_warning_hours")]
+    pub age_warning_hours: u64,
+    #[serde(default = "default_danger_hours")]
+    pub age_danger_hours: u64,
 }
 
 impl Default for GeneralConfig {
@@ -30,6 +34,8 @@ impl Default for GeneralConfig {
             notifications_enabled: true,
             notifications: NotificationConfig::default(),
             provider_indicator: ProviderIndicator::default(),
+            age_warning_hours: default_warning_hours(),
+            age_danger_hours: default_danger_hours(),
         }
     }
 }
@@ -77,6 +83,14 @@ fn default_refresh_interval() -> u64 {
 
 fn default_stale_threshold() -> u64 {
     48
+}
+
+fn default_warning_hours() -> u64 {
+    48
+}
+
+fn default_danger_hours() -> u64 {
+    144
 }
 
 fn default_true() -> bool {

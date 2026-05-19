@@ -7,5 +7,7 @@ export function usePrDetail(prId: PrId | null) {
     queryKey: ["pr-detail", prId],
     queryFn: () => api.getPrDetail(prId!),
     enabled: prId !== null,
+    staleTime: 0,
+    refetchInterval: prId !== null ? 30_000 : false,
   });
 }

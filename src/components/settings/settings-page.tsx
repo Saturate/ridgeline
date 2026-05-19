@@ -173,20 +173,41 @@ export function SettingsPage({ onDone }: SettingsPageProps) {
           <Separator />
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium">Stale threshold</p>
+              <p className="text-sm font-medium">Age warning</p>
               <p className="text-xs text-muted-foreground">
-                Mark PRs as stale after this many hours
+                Show <span className="text-orange-500">orange</span> after this many hours
               </p>
             </div>
             <Input
               type="number"
               className="w-24"
-              value={config.general.stale_threshold_hours}
+              value={config.general.age_warning_hours}
               min={1}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                 handleSaveGeneral(
-                  "stale_threshold_hours",
+                  "age_warning_hours",
                   parseInt(e.target.value) || 48,
+                )
+              }
+            />
+          </div>
+          <Separator />
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Age danger</p>
+              <p className="text-xs text-muted-foreground">
+                Show <span className="text-red-500">red</span> after this many hours
+              </p>
+            </div>
+            <Input
+              type="number"
+              className="w-24"
+              value={config.general.age_danger_hours}
+              min={1}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                handleSaveGeneral(
+                  "age_danger_hours",
+                  parseInt(e.target.value) || 144,
                 )
               }
             />

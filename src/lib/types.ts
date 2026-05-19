@@ -25,6 +25,8 @@ export interface PullRequest {
   repository: Repository;
   labels: string[];
   mergeStatus: MergeStatus | null;
+  buildStatus: BuildStatus | null;
+  sourceCommitId: string | null;
   webUrl: string;
 }
 
@@ -113,6 +115,8 @@ export interface GeneralConfig {
   notifications_enabled: boolean;
   notifications: NotificationConfig;
   provider_indicator: ProviderIndicator;
+  age_warning_hours: number;
+  age_danger_hours: number;
 }
 
 export interface NotificationConfig {

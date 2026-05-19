@@ -24,6 +24,13 @@ pub struct AdoPullRequest {
     pub labels: Option<Vec<AdoLabel>>,
     pub merge_status: Option<String>,
     pub url: Option<String>,
+    pub last_merge_source_commit: Option<AdoCommitRef>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdoCommitRef {
+    pub commit_id: String,
 }
 
 #[derive(Debug, Deserialize)]

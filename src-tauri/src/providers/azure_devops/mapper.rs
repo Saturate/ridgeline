@@ -43,6 +43,11 @@ pub fn map_pull_request(ado_pr: &AdoPullRequest, provider_name: &str, base_url: 
             .map(|ls| ls.iter().map(|l| l.name.clone()).collect())
             .unwrap_or_default(),
         merge_status: ado_pr.merge_status.as_deref().map(map_merge_status),
+        build_status: None,
+        source_commit_id: ado_pr
+            .last_merge_source_commit
+            .as_ref()
+            .map(|c| c.commit_id.clone()),
         web_url: format!(
             "{}/{}/{}/_git/{}/pullrequest/{}",
             base_url, project, project, repo, ado_pr.pull_request_id
