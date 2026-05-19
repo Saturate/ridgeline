@@ -14,6 +14,7 @@ interface ProviderFormProps {
 export function ProviderForm({ initial, onSave, onCancel }: ProviderFormProps) {
   const [name, setName] = useState(initial?.name ?? "");
   const [url, setUrl] = useState(initial?.url ?? "");
+  const [color, setColor] = useState(initial?.color ?? "#3b82f6");
   const [token, setToken] = useState("");
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{
@@ -43,6 +44,7 @@ export function ProviderForm({ initial, onSave, onCancel }: ProviderFormProps) {
       type: "azure-devops",
       name,
       url,
+      color,
       projects: initial?.projects ?? [],
     });
   };
@@ -51,7 +53,7 @@ export function ProviderForm({ initial, onSave, onCancel }: ProviderFormProps) {
 
   return (
     <div className="space-y-3 rounded-md border p-3">
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
         <div>
           <label className="mb-1 block text-xs font-medium">Name</label>
           <Input
@@ -68,6 +70,15 @@ export function ProviderForm({ initial, onSave, onCancel }: ProviderFormProps) {
             placeholder="https://dev.azure.com/contoso"
             value={url}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setUrl(e.target.value)}
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium">Color</label>
+          <input
+            type="color"
+            value={color}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setColor(e.target.value)}
+            className="h-9 w-9 cursor-pointer rounded border border-input bg-transparent p-0.5"
           />
         </div>
       </div>

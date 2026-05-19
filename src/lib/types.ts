@@ -105,11 +105,14 @@ export interface Config {
   providers: ProviderConfig[];
 }
 
+export type ProviderIndicator = "off" | "border" | "badge";
+
 export interface GeneralConfig {
   refresh_interval_secs: number;
   stale_threshold_hours: number;
   notifications_enabled: boolean;
   notifications: NotificationConfig;
+  provider_indicator: ProviderIndicator;
 }
 
 export interface NotificationConfig {
@@ -126,6 +129,7 @@ export type ProviderConfig = {
 export interface AzureDevOpsConfig {
   name: string;
   url: string;
+  color?: string;
   projects: ProjectFilter[];
 }
 

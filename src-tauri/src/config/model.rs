@@ -18,6 +18,8 @@ pub struct GeneralConfig {
     pub notifications_enabled: bool,
     #[serde(default)]
     pub notifications: NotificationConfig,
+    #[serde(default)]
+    pub provider_indicator: ProviderIndicator,
 }
 
 impl Default for GeneralConfig {
@@ -27,7 +29,22 @@ impl Default for GeneralConfig {
             stale_threshold_hours: default_stale_threshold(),
             notifications_enabled: true,
             notifications: NotificationConfig::default(),
+            provider_indicator: ProviderIndicator::default(),
         }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum ProviderIndicator {
+    Off,
+    Border,
+    Badge,
+}
+
+impl Default for ProviderIndicator {
+    fn default() -> Self {
+        Self::Border
     }
 }
 
@@ -77,6 +94,8 @@ pub enum ProviderConfig {
 pub struct AzureDevOpsConfig {
     pub name: String,
     pub url: String,
+    #[serde(default)]
+    pub color: Option<String>,
     #[serde(default)]
     pub projects: Vec<ProjectFilter>,
 }

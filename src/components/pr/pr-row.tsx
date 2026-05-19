@@ -12,23 +12,51 @@ import { AgeIndicator } from "./age-indicator";
 import { MergeStatusBadge, BuildStatusBadge } from "./merge-status-badge";
 import { PrStatusSummary } from "./pr-status-summary";
 import { api } from "@/lib/api";
-import type { PullRequest } from "@/lib/types";
+import type { PullRequest, ProviderIndicator } from "@/lib/types";
 import type { PrListVariant } from "./pr-list";
 
 interface PrRowProps {
   pr: PullRequest;
   variant: PrListVariant;
+  providerColor?: string;
+  indicatorMode: ProviderIndicator;
   onClick: () => void;
 }
 
-export function PrRow({ pr, variant, onClick }: PrRowProps) {
+export function PrRow({
+  pr,
+  variant,
+  providerColor,
+  indicatorMode,
+  onClick,
+}: PrRowProps) {
   return (
     <div
-      className="flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-accent/50"
+      className="relative flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-accent/50"
       onClick={onClick}
+      style={
+        indicatorMode === "border" && providerColor
+          ? { borderLeft: `3px solid ${providerColor}` }
+          : undefined
+      }
     >
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
+          {indicatorMode === "badge" && providerColor && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span
+                    className="inline-flex shrink-0 items-center rounded px-1.5 py-0.5 text-[10px] font-medium text-white"
+                    style={{ backgroundColor: providerColor }}
+                  >
+                    {pr.id.provider}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>{pr.id.provider}</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
           <span className="truncate text-sm font-medium">{pr.title}</span>
           {pr.isDraft && (
             <Badge variant="outline" className="shrink-0 text-xs">

@@ -8,7 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { useConfig, useSaveConfig } from "@/lib/hooks/use-config";
 import { api } from "@/lib/api";
 import { ProviderForm } from "./provider-form";
-import type { Config, NotificationConfig, ProviderConfig } from "@/lib/types";
+import { getProviderColorMap } from "@/lib/provider-colors";
+import type { Config, NotificationConfig, ProviderConfig, ProviderIndicator } from "@/lib/types";
 
 interface SettingsPageProps {
   onDone: () => void;
@@ -45,7 +46,7 @@ export function SettingsPage({ onDone }: SettingsPageProps) {
     saveConfig.mutate({ ...config, providers: newProviders });
   };
 
-  const handleSaveGeneral = (field: string, value: number | boolean) => {
+  const handleSaveGeneral = (field: string, value: number | boolean | string) => {
     saveConfig.mutate({
       ...config,
       general: { ...config.general, [field]: value },
@@ -99,6 +100,10 @@ export function SettingsPage({ onDone }: SettingsPageProps) {
               >
                 <div>
                   <div className="flex items-center gap-2">
+                    <span
+                      className="h-3 w-3 shrink-0 rounded-full"
+                      style={{ backgroundColor: getProviderColorMap(config.providers)[provider.name] }}
+                    />
                     <span className="text-sm font-medium">{provider.name}</span>
                     <Badge variant="secondary" className="text-xs">
                       Azure DevOps
@@ -229,6 +234,52 @@ export function SettingsPage({ onDone }: SettingsPageProps) {
             checked={config.general.notifications.build_failed}
             onChange={(v) => handleSaveNotification("build_failed", v)}
           />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Provider Indicator</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Display mode</p>
+              <p className="text-xs text-muted-foreground">
+                How to visually distinguish providers in the PR list
+              </p>
+            </div>
+            <div className="flex gap-1">
+              {(["border", "badge", "off"] as ProviderIndicator[]).map(
+                (mode) => (
+                  <Button
+                    key={mode}
+                    size="sm"
+                    variant={
+                      config.general.provider_indicator === mode
+                        ? "default"
+                        : "outline"
+                    }
+                    onClick={() =>
+                      handleSaveGeneral("provider_indicator", mode)
+                    }
+                    className="capitalize"
+                  >
+                    {mode}
+                  </Button>
+                ),
+              )}
+            </div>
+          </div>
+          {config.general.provider_indicator !== "off" &&
+            config.providers.length > 1 && (
+              <>
+                <Separator />
+                <p className="text-xs text-muted-foreground">
+                  Provider colors can be changed when editing each provider.
+                </p>
+              </>
+            )}
         </CardContent>
       </Card>
 

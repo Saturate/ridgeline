@@ -18,6 +18,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { usePollData } from "@/lib/hooks/use-poll-data";
 import { PrList } from "@/components/pr/pr-list";
 import { PrDetailPanel } from "@/components/pr/pr-detail-panel";
+import { useConfig } from "@/lib/hooks/use-config";
+import { getProviderColorMap } from "@/lib/provider-colors";
 import type { PrId, PullRequest } from "@/lib/types";
 
 interface DashboardProps {
@@ -33,6 +35,13 @@ export function Dashboard({ initialized, initError }: DashboardProps) {
     null,
   );
   const { data, isLoading, error } = usePollData(initialized);
+  const { data: config } = useConfig();
+
+  const providerColors = useMemo(
+    () => getProviderColorMap(config?.providers ?? []),
+    [config?.providers],
+  );
+  const indicatorMode = config?.general.provider_indicator ?? "border";
 
   const allProviders = useMemo(() => {
     if (!data) return [];
@@ -201,10 +210,10 @@ export function Dashboard({ initialized, initError }: DashboardProps) {
 
         <ScrollArea className="flex-1">
           <TabsContent value="reviewing" className="m-0">
-            <PrList prs={reviewing} variant="reviewing" onSelect={setSelectedPrId} />
+            <PrList prs={reviewing} variant="reviewing" providerColors={providerColors} indicatorMode={indicatorMode} onSelect={setSelectedPrId} />
           </TabsContent>
           <TabsContent value="authored" className="m-0">
-            <PrList prs={authored} variant="authored" onSelect={setSelectedPrId} />
+            <PrList prs={authored} variant="authored" providerColors={providerColors} indicatorMode={indicatorMode} onSelect={setSelectedPrId} />
           </TabsContent>
         </ScrollArea>
       </Tabs>
