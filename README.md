@@ -16,11 +16,16 @@ Built with [Tauri v2](https://tauri.app) (Rust backend) and React + [shadcn/ui](
 
 ## Install
 
-Download the latest release from the [Releases page](https://github.com/Saturate/ridgeline/releases).
+### macOS (recommended)
 
-### macOS
+```bash
+brew tap Saturate/ridgeline
+brew install --cask ridgeline
+```
 
-macOS may show "Ridgeline is damaged and can't be opened" because the app is not notarized. To fix this, run after installing:
+### Manual download
+
+Download from the [Releases page](https://github.com/Saturate/ridgeline/releases). On macOS, the app is not notarized so you'll need to run once after installing:
 
 ```bash
 xattr -cr /Applications/Ridgeline.app
