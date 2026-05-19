@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use tokio::sync::RwLock;
+use tokio::task::JoinHandle;
 
 use crate::config::model::Config;
 use crate::notifications::tracker::ChangeTracker;
@@ -20,6 +21,7 @@ pub struct AppStateInner {
     pub providers: RwLock<Vec<(Arc<dyn PrProvider>, UserId)>>,
     pub change_tracker: RwLock<ChangeTracker>,
     pub build_cache: RwLock<HashMap<String, CachedBuildStatus>>,
+    pub poll_task: RwLock<Option<JoinHandle<()>>>,
 }
 
 pub struct CachedBuildStatus {
@@ -36,6 +38,7 @@ impl AppState {
                 providers: RwLock::new(Vec::new()),
                 change_tracker: RwLock::new(ChangeTracker::new()),
                 build_cache: RwLock::new(HashMap::new()),
+                poll_task: RwLock::new(None),
             }),
         }
     }
@@ -58,5 +61,9 @@ impl AppState {
 
     pub fn build_cache(&self) -> &RwLock<HashMap<String, CachedBuildStatus>> {
         &self.inner.build_cache
+    }
+
+    pub fn poll_task(&self) -> &RwLock<Option<JoinHandle<()>>> {
+        &self.inner.poll_task
     }
 }

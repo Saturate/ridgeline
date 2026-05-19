@@ -130,10 +130,18 @@ pub async fn open_url(url: String) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn start_polling(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    // Cancel existing poll task if any
+    {
+        let mut task = state.poll_task().write().await;
+        if let Some(handle) = task.take() {
+            handle.abort();
+        }
+    }
+
     let state = state.inner().clone();
     let handle = app.clone();
 
-    tokio::spawn(async move {
+    let task = tokio::spawn(async move {
         let mut first_poll = true;
 
         loop {
@@ -191,6 +199,11 @@ pub async fn start_polling(app: AppHandle, state: State<'_, AppState>) -> Result
             tokio::time::sleep(Duration::from_secs(interval)).await;
         }
     });
+
+    // Store task handle so we can cancel it later
+    let app_state = app.state::<AppState>();
+    let mut poll_task = app_state.poll_task().write().await;
+    *poll_task = Some(task);
 
     Ok(())
 }

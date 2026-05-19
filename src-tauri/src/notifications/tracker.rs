@@ -1,20 +1,54 @@
 use std::collections::{HashMap, HashSet};
+use std::fs;
+use std::path::PathBuf;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::providers::types::{PrId, PullRequest, Vote};
+
+#[derive(Serialize, Deserialize, Default)]
+struct TrackerState {
+    known_prs: HashSet<String>,
+    vote_states: HashMap<String, Vec<(String, String)>>,
+}
 
 pub struct ChangeTracker {
     known_prs: HashSet<String>,
     vote_states: HashMap<String, Vec<(String, Vote)>>,
+    state_path: Option<PathBuf>,
 }
 
 impl ChangeTracker {
     pub fn new() -> Self {
-        Self {
+        let state_path = dirs::config_dir().map(|d| d.join("ridgeline").join(".tracker_state.json"));
+
+        let mut tracker = Self {
             known_prs: HashSet::new(),
             vote_states: HashMap::new(),
+            state_path: state_path.clone(),
+        };
+
+        if let Some(path) = &state_path {
+            if let Ok(data) = fs::read_to_string(path) {
+                if let Ok(state) = serde_json::from_str::<TrackerState>(&data) {
+                    tracker.known_prs = state.known_prs;
+                    tracker.vote_states = state
+                        .vote_states
+                        .into_iter()
+                        .map(|(k, v)| {
+                            (
+                                k,
+                                v.into_iter()
+                                    .map(|(name, vote_str)| (name, deserialize_vote(&vote_str)))
+                                    .collect(),
+                            )
+                        })
+                        .collect();
+                }
+            }
         }
+
+        tracker
     }
 
     pub fn detect_changes(&mut self, prs: &[PullRequest]) -> Vec<Change> {
@@ -65,8 +99,31 @@ impl ChangeTracker {
         }
 
         self.known_prs = current_keys;
+        self.save();
 
         changes
+    }
+
+    fn save(&self) {
+        let Some(path) = &self.state_path else { return };
+        let state = TrackerState {
+            known_prs: self.known_prs.clone(),
+            vote_states: self
+                .vote_states
+                .iter()
+                .map(|(k, v)| {
+                    (
+                        k.clone(),
+                        v.iter()
+                            .map(|(name, vote)| (name.clone(), serialize_vote(vote)))
+                            .collect(),
+                    )
+                })
+                .collect(),
+        };
+        if let Ok(data) = serde_json::to_string(&state) {
+            let _ = fs::write(path, data);
+        }
     }
 }
 
@@ -75,6 +132,27 @@ fn pr_key(id: &PrId) -> String {
         "{}:{}:{}:{}",
         id.provider, id.project, id.repository, id.number
     )
+}
+
+fn serialize_vote(vote: &Vote) -> String {
+    match vote {
+        Vote::Approved => "approved",
+        Vote::ApprovedWithSuggestions => "approved_with_suggestions",
+        Vote::NoVote => "no_vote",
+        Vote::WaitingForAuthor => "waiting_for_author",
+        Vote::Rejected => "rejected",
+    }
+    .to_string()
+}
+
+fn deserialize_vote(s: &str) -> Vote {
+    match s {
+        "approved" => Vote::Approved,
+        "approved_with_suggestions" => Vote::ApprovedWithSuggestions,
+        "waiting_for_author" => Vote::WaitingForAuthor,
+        "rejected" => Vote::Rejected,
+        _ => Vote::NoVote,
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
