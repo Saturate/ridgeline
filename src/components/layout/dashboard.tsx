@@ -37,9 +37,13 @@ export function Dashboard({ initialized, initError }: DashboardProps) {
   const { data, isLoading, error } = usePollData(initialized);
   const { data: config } = useConfig();
 
+  const DEMO_MODE = window.location.search.includes("demo");
   const providerColors = useMemo(
-    () => getProviderColorMap(config?.providers ?? []),
-    [config?.providers],
+    () =>
+      DEMO_MODE
+        ? { contoso: "#3b82f6", fabrikam: "#10b981" }
+        : getProviderColorMap(config?.providers ?? []),
+    [config?.providers, DEMO_MODE],
   );
   const indicatorMode = config?.general.provider_indicator ?? "border";
   const warningHours = config?.general.age_warning_hours ?? 48;

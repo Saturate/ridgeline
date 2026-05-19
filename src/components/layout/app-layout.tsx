@@ -9,9 +9,11 @@ import { useConfig } from "@/lib/hooks/use-config";
 
 type View = "dashboard" | "settings";
 
+const DEMO_MODE = window.location.search.includes("demo");
+
 export function AppLayout() {
   const [view, setView] = useState<View>("dashboard");
-  const [initialized, setInitialized] = useState(false);
+  const [initialized, setInitialized] = useState(DEMO_MODE);
   const [initError, setInitError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const config = useConfig();

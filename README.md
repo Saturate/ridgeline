@@ -4,6 +4,8 @@ Cross-tenant, cross-project pull request monitor for Azure DevOps. See all your 
 
 Built with [Tauri v2](https://tauri.app) (Rust backend) and React + [shadcn/ui](https://ui.shadcn.com) (frontend).
 
+![Ridgeline screenshot](docs/screenshot.png)
+
 ## Features
 
 - **Cross-tenant overview** — connect multiple Azure DevOps organizations
