@@ -14,16 +14,28 @@ Built with [Tauri v2](https://tauri.app) (Rust backend) and React + [shadcn/ui](
 - **Background polling** — automatic refresh with configurable interval
 - **Dark mode** — follows system preference
 
-## Setup
+## Install
+
+Download the latest release from the [Releases page](https://github.com/Saturate/ridgeline/releases).
+
+### macOS
+
+macOS may show "Ridgeline is damaged and can't be opened" because the app is not notarized. To fix this, run after installing:
+
+```bash
+xattr -cr /Applications/Ridgeline.app
+```
+
+On first launch, add your Azure DevOps provider with an organization URL and Personal Access Token.
+
+Config is stored at `~/Library/Application Support/ridgeline/` (macOS) or `~/.config/ridgeline/` (Linux).
+
+## Development
 
 ```bash
 pnpm install
 pnpm tauri dev
 ```
-
-On first launch, add your Azure DevOps provider with an organization URL and Personal Access Token.
-
-Config is stored at `~/.config/ridgeline/config.toml` (macOS: `~/Library/Application Support/ridgeline/`).
 
 ## Build
 
