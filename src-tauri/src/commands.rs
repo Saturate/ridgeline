@@ -309,5 +309,6 @@ pub async fn test_notification(app: AppHandle) -> Result<(), String> {
         .title("Ridgeline")
         .body("Notifications are working!")
         .show()
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    open::that("https://github.com/Saturate/ridgeline").map_err(|e| e.to_string())
 }

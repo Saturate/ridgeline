@@ -63,6 +63,7 @@ impl ChangeTracker {
                     title: pr.title.clone(),
                     author: pr.author.display_name.clone(),
                     repo: format!("{}/{}", pr.repository.project, pr.repository.name),
+                    web_url: pr.web_url.clone(),
                 });
             }
 
@@ -81,6 +82,7 @@ impl ChangeTracker {
                                 pr_title: pr.title.clone(),
                                 reviewer: name.clone(),
                                 new_vote: vote.clone(),
+                                web_url: pr.web_url.clone(),
                             });
                         }
                         None if *vote != Vote::NoVote => {
@@ -88,6 +90,7 @@ impl ChangeTracker {
                                 pr_title: pr.title.clone(),
                                 reviewer: name.clone(),
                                 new_vote: vote.clone(),
+                                web_url: pr.web_url.clone(),
                             });
                         }
                         _ => {}
@@ -163,16 +166,25 @@ pub enum Change {
         title: String,
         author: String,
         repo: String,
+        web_url: String,
     },
     #[serde(rename = "voteChanged")]
     VoteChanged {
         pr_title: String,
         reviewer: String,
         new_vote: Vote,
+        web_url: String,
     },
 }
 
 impl Change {
+    pub fn web_url(&self) -> &str {
+        match self {
+            Change::NewPr { web_url, .. } => web_url,
+            Change::VoteChanged { web_url, .. } => web_url,
+        }
+    }
+
     pub fn notification_title(&self) -> String {
         match self {
             Change::NewPr { .. } => "New Pull Request".to_string(),
@@ -186,6 +198,7 @@ impl Change {
                 title,
                 author,
                 repo,
+                ..
             } => {
                 format!("{author} opened \"{title}\" in {repo}")
             }
@@ -193,6 +206,7 @@ impl Change {
                 pr_title,
                 reviewer,
                 new_vote,
+                ..
             } => {
                 format!(
                     "{reviewer} voted {} on \"{pr_title}\"",
