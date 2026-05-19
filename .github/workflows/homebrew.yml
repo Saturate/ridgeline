@@ -3,6 +3,7 @@ name: Update Homebrew Tap
 on:
   release:
     types: [published]
+  workflow_dispatch:
 
 jobs:
   update-tap:
@@ -12,7 +13,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          # For workflow_dispatch, get latest release tag
+          if [[ "$GITHUB_REF_NAME" == v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION=$(gh release view --repo Saturate/ridgeline --json tagName --jq '.tagName' | sed 's/^v//')
+          fi
           echo "Updating cask to version $VERSION"
 
           # Download macOS DMGs and compute SHA256
