@@ -158,9 +158,6 @@ export function Dashboard({ initialized, initError }: DashboardProps) {
               className="h-9 w-9 shrink-0"
             >
               <SlidersHorizontal className="h-4 w-4" />
-              {hasActiveFilters && (
-                <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-primary" />
-              )}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">

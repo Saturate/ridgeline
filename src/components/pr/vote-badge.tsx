@@ -1,3 +1,4 @@
+import { Check, Clock, Minus, X } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -6,17 +7,18 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { Reviewer, Vote } from "@/lib/types";
+import type { LucideIcon } from "lucide-react";
 
 interface VoteBadgeProps {
   reviewer: Reviewer;
 }
 
-const voteConfig: Record<Vote, { symbol: string; color: string }> = {
-  Approved: { symbol: "✓", color: "bg-green-500/20 text-green-700 dark:text-green-400" },
-  ApprovedWithSuggestions: { symbol: "✓~", color: "bg-green-500/10 text-green-600 dark:text-green-500" },
-  NoVote: { symbol: "·", color: "bg-muted text-muted-foreground" },
-  WaitingForAuthor: { symbol: "⏳", color: "bg-yellow-500/20 text-yellow-700 dark:text-yellow-400" },
-  Rejected: { symbol: "✗", color: "bg-red-500/20 text-red-700 dark:text-red-400" },
+const voteConfig: Record<Vote, { icon: LucideIcon; color: string }> = {
+  Approved: { icon: Check, color: "bg-green-500/20 text-green-700 dark:text-green-400" },
+  ApprovedWithSuggestions: { icon: Check, color: "bg-green-500/10 text-green-600 dark:text-green-500" },
+  NoVote: { icon: Minus, color: "bg-muted text-muted-foreground" },
+  WaitingForAuthor: { icon: Clock, color: "bg-yellow-500/20 text-yellow-700 dark:text-yellow-400" },
+  Rejected: { icon: X, color: "bg-red-500/20 text-red-700 dark:text-red-400" },
 };
 
 function initials(name: string): string {
@@ -31,6 +33,7 @@ function initials(name: string): string {
 
 export function VoteBadge({ reviewer }: VoteBadgeProps) {
   const config = voteConfig[reviewer.vote];
+  const Icon = config.icon;
   return (
     <TooltipProvider>
       <Tooltip>
@@ -42,7 +45,7 @@ export function VoteBadge({ reviewer }: VoteBadgeProps) {
               reviewer.isRequired && "ring-1 ring-current/30",
             )}
           >
-            <span>{config.symbol}</span>
+            <Icon className="h-3 w-3" />
             <span>{initials(reviewer.user.displayName)}</span>
           </span>
         </TooltipTrigger>
