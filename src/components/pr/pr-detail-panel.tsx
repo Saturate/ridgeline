@@ -85,7 +85,7 @@ export function PrDetailPanel({ prId, onClose }: PrDetailPanelProps) {
 
               <div className="flex items-center gap-2">
                 <MergeStatusBadge status={data.pr.mergeStatus} />
-                <BuildStatusBadge status={data.buildStatus} />
+                <BuildStatusBadge status={data.pr.buildStatus} />
               </div>
 
               {data.diffStats && (
