@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.4.0] - 2026-05-19
+
+### Bug Fixes
+
+- Use inline badges instead of banners in detail panel
+- Replace emoji vote symbols with lucide icons, remove filter dot
+- Add workflow_dispatch to homebrew and winget workflows *(ci)*
+
+### Documentation
+
+- Add screenshot and demo mode for mock data
+- Add Homebrew install instructions
+- Add macOS Gatekeeper workaround to README
+
+### Features
+
+- Conventional commit badges and project name toggle
+- Build status, age thresholds, detail refresh, animations
+- Auto-update Homebrew tap and WinGet on release *(ci)*
 ## [0.3.0] - 2026-05-19
 
 ### Bug Fixes
@@ -13,6 +32,7 @@
 
 ### Miscellaneous
 
+- V0.3.0 *(release)*
 - Add AGPL-3.0 license
 ## [0.2.0] - 2026-05-18
 
