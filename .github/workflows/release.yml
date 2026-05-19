@@ -4,11 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       bump:
-        description: "Version bump type (or leave empty for auto-detect from commits)"
-        required: false
+        description: "Version bump type (auto = detect from commits)"
+        required: true
         type: choice
+        default: auto
         options:
-          - ""
+          - auto
           - patch
           - minor
           - major
@@ -35,7 +36,7 @@ jobs:
       - name: Determine next version
         id: bump
         run: |
-          if [ -n "${{ inputs.bump }}" ]; then
+          if [ "${{ inputs.bump }}" != "auto" ]; then
             VERSION=$(git-cliff --bumped-version --bump "${{ inputs.bump }}")
           else
             VERSION=$(git-cliff --bumped-version)
@@ -80,3 +81,5 @@ jobs:
     needs: version
     uses: ./.github/workflows/build.yml
     secrets: inherit
+    permissions:
+      contents: write
