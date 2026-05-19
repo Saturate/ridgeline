@@ -1,0 +1,16 @@
+name: Update WinGet
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  update-winget:
+    runs-on: windows-latest
+    steps:
+      - name: Submit to WinGet
+        uses: vedantmgoyal9/winget-releaser@main
+        with:
+          identifier: Saturate.Ridgeline
+          installers-regex: '\.exe$|\.msi$'
+          token: ${{ secrets.WINGET_TOKEN }}

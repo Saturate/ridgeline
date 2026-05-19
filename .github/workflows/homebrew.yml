@@ -1,0 +1,91 @@
+name: Update Homebrew Tap
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  update-tap:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update Homebrew cask
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Updating cask to version $VERSION"
+
+          # Download macOS DMGs and compute SHA256
+          ARM_URL="https://github.com/Saturate/ridgeline/releases/download/v${VERSION}/Ridgeline_${VERSION}_aarch64.dmg"
+          X64_URL="https://github.com/Saturate/ridgeline/releases/download/v${VERSION}/Ridgeline_${VERSION}_x64.dmg"
+
+          ARM_SHA=""
+          X64_SHA=""
+
+          if curl -fSL --head "$ARM_URL" > /dev/null 2>&1; then
+            ARM_SHA=$(curl -fSL "$ARM_URL" | shasum -a 256 | cut -d' ' -f1)
+            echo "ARM SHA256: $ARM_SHA"
+          fi
+
+          if curl -fSL --head "$X64_URL" > /dev/null 2>&1; then
+            X64_SHA=$(curl -fSL "$X64_URL" | shasum -a 256 | cut -d' ' -f1)
+            echo "x64 SHA256: $X64_SHA"
+          fi
+
+          if [ -z "$ARM_SHA" ] && [ -z "$X64_SHA" ]; then
+            echo "No macOS DMGs found, skipping tap update"
+            exit 0
+          fi
+
+          # Build cask file
+          cat > /tmp/ridgeline.rb << 'CASK'
+          cask "ridgeline" do
+            version "VERSION_PLACEHOLDER"
+
+            on_arm do
+              sha256 "ARM_SHA_PLACEHOLDER"
+              url "https://github.com/Saturate/ridgeline/releases/download/v#{version}/Ridgeline_#{version}_aarch64.dmg"
+            end
+
+            on_intel do
+              sha256 "X64_SHA_PLACEHOLDER"
+              url "https://github.com/Saturate/ridgeline/releases/download/v#{version}/Ridgeline_#{version}_x64.dmg"
+            end
+
+            name "Ridgeline"
+            desc "Cross-tenant pull request monitor for Azure DevOps"
+            homepage "https://github.com/Saturate/ridgeline"
+
+            app "Ridgeline.app"
+
+            zap trash: [
+              "~/Library/Application Support/ridgeline",
+            ]
+          end
+          CASK
+
+          sed -i "s/VERSION_PLACEHOLDER/$VERSION/" /tmp/ridgeline.rb
+
+          if [ -n "$ARM_SHA" ]; then
+            sed -i "s/ARM_SHA_PLACEHOLDER/$ARM_SHA/" /tmp/ridgeline.rb
+          else
+            sed -i 's/"ARM_SHA_PLACEHOLDER"/:no_check/' /tmp/ridgeline.rb
+          fi
+
+          if [ -n "$X64_SHA" ]; then
+            sed -i "s/X64_SHA_PLACEHOLDER/$X64_SHA/" /tmp/ridgeline.rb
+          else
+            sed -i 's/"X64_SHA_PLACEHOLDER"/:no_check/' /tmp/ridgeline.rb
+          fi
+
+          # Clone tap, update, push
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/Saturate/homebrew-ridgeline.git" /tmp/tap
+          cp /tmp/ridgeline.rb /tmp/tap/Casks/ridgeline.rb
+
+          cd /tmp/tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Casks/ridgeline.rb
+          git diff --cached --quiet && echo "No changes" && exit 0
+          git commit -m "chore: bump ridgeline to v${VERSION}"
+          git push
