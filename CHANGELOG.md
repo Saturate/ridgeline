@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.5.0] - 2026-05-21
+
+### Bug Fixes
+
+- Use GitHub App token instead of PAT for all workflows *(ci)*
+- Let git-cliff auto-detect version bump from commits *(ci)*
+- Add cursor pointer to open in browser button
+- Fetch full PR description and add scrollable description area
+- Show team icon for group reviewers and clean group display names
+- Use PAT for release to trigger homebrew workflow and strip quarantine in cask template *(ci)*
+- Prevent duplicate notifications on restart and re-init
+- Use PAT for release push to trigger build workflow *(ci)*
+
+### Features
+
+- Add MCP integration section to settings with setup guides
+- Render PR descriptions as markdown in detail panel
+- Add MCP stdio server for Claude Code integration
+- Test notification opens repo, PR URLs in change events
+
+### Miscellaneous
+
+- Update Cargo.lock to v0.4.0
 ## [0.4.0] - 2026-05-19
 
 ### Bug Fixes
@@ -19,6 +42,10 @@
 - Conventional commit badges and project name toggle
 - Build status, age thresholds, detail refresh, animations
 - Auto-update Homebrew tap and WinGet on release *(ci)*
+
+### Miscellaneous
+
+- V0.4.0 *(release)*
 ## [0.3.0] - 2026-05-19
 
 ### Bug Fixes
