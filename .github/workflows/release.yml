@@ -2,17 +2,6 @@ name: Release
 
 on:
   workflow_dispatch:
-    inputs:
-      bump:
-        description: "Version bump type (auto = detect from commits)"
-        required: true
-        type: choice
-        default: auto
-        options:
-          - auto
-          - patch
-          - minor
-          - major
 
 jobs:
   version:
@@ -32,11 +21,7 @@ jobs:
       - name: Determine next version
         id: bump
         run: |
-          if [ "${{ inputs.bump }}" != "auto" ]; then
-            VERSION=$(git-cliff --bumped-version --bump "${{ inputs.bump }}")
-          else
-            VERSION=$(git-cliff --bumped-version)
-          fi
+          VERSION=$(git-cliff --bumped-version)
           echo "version=${VERSION#v}" >> "$GITHUB_OUTPUT"
           echo "tag=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Next version: $VERSION"
