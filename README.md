@@ -15,6 +15,7 @@ Built with [Tauri v2](https://tauri.app) (Rust backend) and React + [shadcn/ui](
 - **Native notifications** — configurable OS notifications for new PRs, vote changes, and build failures
 - **Background polling** — automatic refresh with configurable interval
 - **Dark mode** — follows system preference
+- **MCP server** — expose PR data to AI coding tools via `ridgeline --mcp-stdio`
 
 ## Install
 
