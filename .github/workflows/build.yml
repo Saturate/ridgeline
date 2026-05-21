@@ -2,16 +2,10 @@ name: Build
 
 on:
   push:
-    branches: [master]
     tags: ["v*"]
   pull_request:
     branches: [master]
   workflow_call:
-
-# Skip redundant master build when release workflow pushes a version commit + tag
-# (the tag push already triggers a full build with release artifacts)
-env:
-  SKIP_RELEASE_COMMIT: ${{ github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/') && startsWith(github.event.head_commit.message, 'chore(release):') }}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -19,7 +13,6 @@ concurrency:
 
 jobs:
   build:
-    if: ${{ env.SKIP_RELEASE_COMMIT != 'true' }}
     strategy:
       fail-fast: false
       matrix:
