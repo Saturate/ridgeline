@@ -1,4 +1,4 @@
-import { Check, Clock, Minus, X } from "lucide-react";
+import { Check, Clock, Minus, Users, X } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -21,6 +21,10 @@ const voteConfig: Record<Vote, { icon: LucideIcon; color: string }> = {
   Rejected: { icon: X, color: "bg-red-500/20 text-red-700 dark:text-red-400" },
 };
 
+function isGroup(reviewer: Reviewer): boolean {
+  return /^\[.*?\\/.test(reviewer.user.displayName);
+}
+
 function initials(name: string): string {
   return name
     .split(/\s+/)
@@ -31,9 +35,14 @@ function initials(name: string): string {
     .toUpperCase();
 }
 
+function groupLabel(name: string): string {
+  return name.replace(/^\[.*?\\/, "");
+}
+
 export function VoteBadge({ reviewer }: VoteBadgeProps) {
   const config = voteConfig[reviewer.vote];
   const Icon = config.icon;
+  const group = isGroup(reviewer);
   return (
     <TooltipProvider>
       <Tooltip>
@@ -46,11 +55,15 @@ export function VoteBadge({ reviewer }: VoteBadgeProps) {
             )}
           >
             <Icon className="h-3 w-3" />
-            <span>{initials(reviewer.user.displayName)}</span>
+            {group ? (
+              <Users className="h-3 w-3" />
+            ) : (
+              <span>{initials(reviewer.user.displayName)}</span>
+            )}
           </span>
         </TooltipTrigger>
         <TooltipContent>
-          {reviewer.user.displayName}
+          {group ? groupLabel(reviewer.user.displayName) : reviewer.user.displayName}
           {reviewer.isRequired ? " (required)" : ""}
         </TooltipContent>
       </Tooltip>

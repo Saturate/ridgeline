@@ -144,23 +144,12 @@ impl PrProvider for AzureDevOpsProvider {
     }
 
     async fn get_detail(&self, pr_id: &PrId) -> Result<PrDetail, ProviderError> {
-        // Fetch the PR itself
-        let ado_prs = self
+        let ado_pr = self
             .client
-            .list_pull_requests_by_repo(
-                &pr_id.project,
-                &pr_id.repository,
-                None,
-                None,
-            )
+            .get_pull_request(&pr_id.project, &pr_id.repository, pr_id.number)
             .await?;
 
-        let ado_pr = ado_prs
-            .iter()
-            .find(|p| p.pull_request_id == pr_id.number)
-            .ok_or_else(|| ProviderError::Other(format!("PR {} not found", pr_id.number)))?;
-
-        let pr = mapper::map_pull_request(ado_pr, &self.name, self.client.base_url());
+        let pr = mapper::map_pull_request(&ado_pr, &self.name, self.client.base_url());
 
         // Fetch policy evaluations
         let policies = match self
