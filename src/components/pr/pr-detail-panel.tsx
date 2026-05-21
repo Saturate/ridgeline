@@ -164,7 +164,7 @@ export function PrDetailPanel({ prId, onClose }: PrDetailPanelProps) {
               <Separator />
 
               <Button
-                className="w-full"
+                className="w-full cursor-pointer"
                 onClick={() => api.openUrl(data.pr.webUrl)}
               >
                 <ExternalLink className="mr-2 h-4 w-4" />
