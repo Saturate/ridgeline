@@ -1,5 +1,6 @@
 mod commands;
 mod config;
+pub mod mcp;
 mod notifications;
 mod polling;
 mod providers;
