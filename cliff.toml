@@ -13,14 +13,28 @@ body = """
   ## [Unreleased]
 {% endif -%}
 
-{% for group, commits in commits | group_by(attribute="group") %}
-  ### {{ group | striptags | trim | upper_first }}
-  {% for commit in commits %}
-    - {{ commit.message | upper_first | trim }}\
-      {% if commit.scope %} *({{ commit.scope }})*{% endif %}\
-      {% if commit.breaking %} **BREAKING**{% endif %}\
-  {% endfor %}
-{% endfor %}
+{%- for group, commits in commits | group_by(attribute="group") %}
+{%- if group == "Features" %}
+
+### {{ group | striptags | trim | upper_first }}
+{% for commit in commits %}
+- {{ commit.message | upper_first | trim }}\
+  {% if commit.scope %} *({{ commit.scope }})*{% endif %}\
+  {% if commit.breaking %} **BREAKING**{% endif %}
+{%- endfor %}
+{%- endif %}
+{%- endfor %}
+{%- for group, commits in commits | group_by(attribute="group") %}
+{%- if group != "Features" %}
+
+### {{ group | striptags | trim | upper_first }}
+{% for commit in commits %}
+- {{ commit.message | upper_first | trim }}\
+  {% if commit.scope %} *({{ commit.scope }})*{% endif %}\
+  {% if commit.breaking %} **BREAKING**{% endif %}
+{%- endfor %}
+{%- endif %}
+{%- endfor %}
 """
 footer = ""
 trim = true
