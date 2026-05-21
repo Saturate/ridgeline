@@ -16,6 +16,7 @@ import {
   Minus,
   FileEdit,
 } from "lucide-react";
+import Markdown from "react-markdown";
 import { usePrDetail } from "@/lib/hooks/use-pr-detail";
 import { VoteBadge } from "./vote-badge";
 import { MergeStatusBadge, BuildStatusBadge } from "./merge-status-badge";
@@ -117,7 +118,7 @@ export function PrDetailPanel({ prId, onClose }: PrDetailPanelProps) {
                       <div className="flex items-center gap-2">
                         <VoteBadge reviewer={r} />
                         <span className="text-sm">
-                          {r.user.displayName}
+                          {r.user.displayName.replace(/^\[.*?\\/, "")}
                         </span>
                       </div>
                       {r.isRequired && (
@@ -150,9 +151,9 @@ export function PrDetailPanel({ prId, onClose }: PrDetailPanelProps) {
                   <Separator />
                   <div>
                     <h3 className="mb-2 text-sm font-medium">Description</h3>
-                    <p className="whitespace-pre-wrap text-sm text-muted-foreground">
-                      {data.pr.description}
-                    </p>
+                    <div className="space-y-2 text-sm text-muted-foreground [&_h1]:font-semibold [&_h1]:text-foreground [&_h2]:font-semibold [&_h2]:text-foreground [&_h3]:font-medium [&_h3]:text-foreground [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4 [&_li]:my-0.5 [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-xs [&_pre]:rounded-md [&_pre]:bg-muted [&_pre]:p-3 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_a]:text-primary [&_a]:underline [&_strong]:text-foreground [&_blockquote]:border-l-2 [&_blockquote]:border-muted-foreground/30 [&_blockquote]:pl-3 [&_blockquote]:italic">
+                      <Markdown>{data.pr.description}</Markdown>
+                    </div>
                   </div>
                 </>
               )}
