@@ -90,6 +90,19 @@ impl AzureDevOpsClient {
         Ok(names)
     }
 
+    /// Get a single pull request by ID (returns full description, not truncated)
+    pub async fn get_pull_request(
+        &self,
+        project: &str,
+        repo: &str,
+        pr_id: u64,
+    ) -> Result<AdoPullRequest, ProviderError> {
+        let path = format!(
+            "/{project}/_apis/git/repositories/{repo}/pullrequests/{pr_id}?{API_VERSION}"
+        );
+        self.get(&path).await
+    }
+
     /// Get policy evaluations for a PR
     pub async fn get_policy_evaluations(
         &self,
