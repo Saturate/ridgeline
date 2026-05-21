@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Bell, Plus, Trash2, Pencil } from "lucide-react";
+import { Bell, Check, Clipboard, ExternalLink, Plus, Trash2, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -318,6 +318,60 @@ export function SettingsPage({ onDone }: SettingsPageProps) {
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">MCP Integration</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-xs text-muted-foreground">
+            Ridgeline can act as an MCP server, giving AI coding tools direct
+            access to your pull request data via the <code className="rounded bg-muted px-1 py-0.5">--mcp-stdio</code> flag.
+          </p>
+
+          <div className="space-y-2">
+            <p className="text-sm font-medium">CLI commands</p>
+            <CopyBlock label="Claude Code" text="claude mcp add ridgeline ridgeline -- --mcp-stdio" />
+            <CopyBlock label="Codex" text="codex mcp add ridgeline -- ridgeline --mcp-stdio" />
+          </div>
+
+          <Separator />
+
+          <div className="space-y-2">
+            <p className="text-sm font-medium">JSON config</p>
+            <CopyBlock
+              text={`"ridgeline": {\n  "command": "ridgeline",\n  "args": ["--mcp-stdio"]\n}`}
+            />
+          </div>
+
+          <Separator />
+
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Setup guides</p>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { name: "Claude Desktop", url: "https://modelcontextprotocol.io/quickstart/user" },
+                { name: "Claude Code", url: "https://docs.anthropic.com/en/docs/claude-code/mcp" },
+                { name: "Cursor", url: "https://cursor.com/docs/mcp" },
+                { name: "VS Code Copilot", url: "https://code.visualstudio.com/docs/copilot/customization/mcp-servers" },
+                { name: "Windsurf", url: "https://docs.windsurf.com/windsurf/cascade/mcp" },
+                { name: "Codex", url: "https://developers.openai.com/codex/mcp" },
+              ].map(({ name, url }) => (
+                <Button
+                  key={name}
+                  size="sm"
+                  variant="outline"
+                  className="h-7 cursor-pointer gap-1 text-xs"
+                  onClick={() => api.openUrl(url)}
+                >
+                  {name}
+                  <ExternalLink className="h-3 w-3" />
+                </Button>
+              ))}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {config.providers.length > 0 && (
         <div className="flex justify-end">
           <Button onClick={onDone}>Done</Button>
@@ -355,5 +409,38 @@ function NotificationToggle({
         />
       </button>
     </label>
+  );
+}
+
+function CopyBlock({ text, label }: { text: string; label?: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="group relative">
+      {label && (
+        <p className="mb-1 text-xs text-muted-foreground">{label}</p>
+      )}
+      <pre className="overflow-x-auto rounded-md bg-muted p-3 pr-10 text-xs">
+        {text}
+      </pre>
+      <Button
+        size="icon"
+        variant="ghost"
+        className="absolute right-1 top-1 h-7 w-7 cursor-pointer opacity-0 transition-opacity group-hover:opacity-100"
+        onClick={handleCopy}
+      >
+        {copied ? (
+          <Check className="h-3.5 w-3.5 text-green-500" />
+        ) : (
+          <Clipboard className="h-3.5 w-3.5" />
+        )}
+      </Button>
+    </div>
   );
 }
