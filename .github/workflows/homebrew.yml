@@ -9,9 +9,17 @@ jobs:
   update-tap:
     runs-on: ubuntu-latest
     steps:
+      - name: Generate app token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.SATURATE_CI_APP_ID }}
+          private-key: ${{ secrets.SATURATE_CI_PRIVATE_KEY }}
+          repositories: homebrew-ridgeline
+
       - name: Update Homebrew cask
         env:
-          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           # For workflow_dispatch, get latest release tag
           if [[ "$GITHUB_REF_NAME" == v* ]]; then
