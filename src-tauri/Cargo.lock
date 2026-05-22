@@ -3005,6 +3005,7 @@ dependencies = [
  "dirs",
  "futures",
  "mac-notification-sys",
+ "notify-rust",
  "open",
  "reqwest 0.12.28",
  "rmcp",
