@@ -129,7 +129,7 @@ export function AppLayout() {
             }}
           />
         ) : (
-          <Dashboard initialized={initialized} initError={initError} />
+          <Dashboard initialized={initialized} initError={initError} onRetry={handleRefresh} />
         )}
       </main>
     </div>
