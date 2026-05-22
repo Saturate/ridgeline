@@ -4,6 +4,7 @@ import { Settings, RefreshCw, Mountain } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dashboard } from "@/components/layout/dashboard";
 import { SettingsPage } from "@/components/settings/settings-page";
+import { onAction } from "@tauri-apps/plugin-notification";
 import { api } from "@/lib/api";
 import { useConfig } from "@/lib/hooks/use-config";
 
@@ -79,6 +80,18 @@ export function AppLayout() {
     };
     mq.addEventListener("change", onChange);
     return () => mq.removeEventListener("change", onChange);
+  }, []);
+
+  useEffect(() => {
+    const unlisten = onAction((notification) => {
+      const url = notification.extra?.url;
+      if (typeof url === "string" && url.startsWith("http")) {
+        api.openUrl(url);
+      }
+    });
+    return () => {
+      unlisten.then((u) => u.unregister());
+    };
   }, []);
 
   const needsSetup =

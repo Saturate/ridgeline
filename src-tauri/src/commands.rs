@@ -181,6 +181,7 @@ pub async fn start_polling(app: AppHandle, state: State<'_, AppState>) -> Result
                                 .builder()
                                 .title(change.notification_title())
                                 .body(change.notification_body())
+                                .extra("url", change.web_url())
                                 .show();
                         }
                     }
@@ -308,8 +309,8 @@ pub async fn test_notification(app: AppHandle) -> Result<(), String> {
     app.notification()
         .builder()
         .title("Ridgeline")
-        .body("Notifications are working!")
+        .body("Notifications are working! Click to open the project.")
+        .extra("url", "https://github.com/Saturate/ridgeline")
         .show()
-        .map_err(|e| e.to_string())?;
-    open::that("https://github.com/Saturate/ridgeline").map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())
 }
