@@ -299,6 +299,7 @@ fn should_notify(change: &Change, config: &NotificationConfig) -> bool {
                 config.vote_changed
             }
         }
+        Change::Completed { .. } => config.completed,
     }
 }
 

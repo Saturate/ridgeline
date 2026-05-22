@@ -70,6 +70,8 @@ pub struct NotificationConfig {
     pub waiting_for_author: bool,
     #[serde(default = "default_true")]
     pub build_failed: bool,
+    #[serde(default = "default_true")]
+    pub completed: bool,
 }
 
 impl Default for NotificationConfig {
@@ -79,6 +81,7 @@ impl Default for NotificationConfig {
             vote_changed: true,
             waiting_for_author: true,
             build_failed: true,
+            completed: true,
         }
     }
 }
