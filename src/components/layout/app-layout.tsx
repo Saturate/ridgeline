@@ -4,7 +4,6 @@ import { Settings, RefreshCw, Mountain } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dashboard } from "@/components/layout/dashboard";
 import { SettingsPage } from "@/components/settings/settings-page";
-import { onAction } from "@tauri-apps/plugin-notification";
 import { api } from "@/lib/api";
 import { useConfig } from "@/lib/hooks/use-config";
 
@@ -82,18 +81,6 @@ export function AppLayout() {
     return () => mq.removeEventListener("change", onChange);
   }, []);
 
-  useEffect(() => {
-    const unlisten = onAction((notification) => {
-      const url = notification.extra?.url;
-      if (typeof url === "string" && url.startsWith("http")) {
-        api.openUrl(url);
-      }
-    });
-    return () => {
-      unlisten.then((u) => u.unregister());
-    };
-  }, []);
-
   const needsSetup =
     config.data && config.data.providers.length === 0 && !initialized;
 
@@ -103,9 +90,9 @@ export function AppLayout() {
         <div className="flex items-center gap-2">
           <Mountain className="h-5 w-5 text-primary" />
           <h1 className="text-sm font-semibold">Ridgeline</h1>
-          {version && (
-            <span className="text-xs text-muted-foreground">v{version}</span>
-          )}
+          <span className="text-xs text-muted-foreground">
+            {import.meta.env.DEV ? "local" : version ? `v${version}` : ""}
+          </span>
         </div>
         <div className="flex items-center gap-1">
           <Button

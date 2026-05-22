@@ -30,6 +30,7 @@ urlencoding = "2"
 base64 = "0.22"
 futures = "0.3"
 open = "5"
+mac-notification-sys = "0.6"
 rmcp = { version = "1.7", features = ["server", "transport-io", "client"] }
 schemars = "0.8"
 
