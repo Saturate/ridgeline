@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -12,29 +12,29 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { AlertCircle, Search, SlidersHorizontal, FileEdit } from "lucide-react";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { WifiOff, KeyRound, ServerCrash, Mountain, ChevronDown, ChevronUp, RefreshCw, Search, SlidersHorizontal, FileEdit } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePollData } from "@/lib/hooks/use-poll-data";
 import { PrList } from "@/components/pr/pr-list";
 import { PrDetailPanel } from "@/components/pr/pr-detail-panel";
 import { useConfig } from "@/lib/hooks/use-config";
 import { getProviderColorMap } from "@/lib/provider-colors";
-import type { PrId, PullRequest } from "@/lib/types";
+import type { PrId, PollError, PollErrorKind, PullRequest } from "@/lib/types";
 
 interface DashboardProps {
   initialized: boolean;
   initError: string | null;
+  onRetry?: () => void;
 }
 
-export function Dashboard({ initialized, initError }: DashboardProps) {
+export function Dashboard({ initialized, initError, onRetry }: DashboardProps) {
   const [search, setSearch] = useState("");
   const [selectedPrId, setSelectedPrId] = useState<PrId | null>(null);
   const [hideDrafts, setHideDrafts] = useState(true);
   const [enabledProviders, setEnabledProviders] = useState<Set<string> | null>(
     null,
   );
-  const { data, isLoading, error } = usePollData(initialized);
+  const { data, isLoading, error, refetch } = usePollData(initialized);
   const { data: config } = useConfig();
 
   const DEMO_MODE = window.location.search.includes("demo");
@@ -74,14 +74,7 @@ export function Dashboard({ initialized, initError }: DashboardProps) {
   };
 
   if (initError) {
-    return (
-      <div className="flex items-center justify-center p-8">
-        <Alert variant="destructive" className="max-w-lg">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{initError}</AlertDescription>
-        </Alert>
-      </div>
-    );
+    return <FullScreenError message={initError} onRetry={onRetry} />;
   }
 
   if (!initialized || isLoading) {
@@ -95,14 +88,7 @@ export function Dashboard({ initialized, initError }: DashboardProps) {
   }
 
   if (error) {
-    return (
-      <div className="flex items-center justify-center p-8">
-        <Alert variant="destructive" className="max-w-lg">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{String(error)}</AlertDescription>
-        </Alert>
-      </div>
-    );
+    return <FullScreenError message={String(error)} onRetry={() => refetch()} />;
   }
 
   const activeProviders = enabledProviders ?? new Set(allProviders);
@@ -127,16 +113,7 @@ export function Dashboard({ initialized, initError }: DashboardProps) {
   return (
     <div className="flex h-full flex-col">
       {data?.errors && data.errors.length > 0 && (
-        <div className="border-b px-4 py-2">
-          {data.errors.map((err, i) => (
-            <Alert key={i} variant="destructive" className="mb-1">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                {err.provider}: {err.message}
-              </AlertDescription>
-            </Alert>
-          ))}
-        </div>
+        <ErrorBanner errors={data.errors} />
       )}
 
       <div className="flex items-center gap-2 border-b px-4 py-2">
@@ -227,6 +204,153 @@ export function Dashboard({ initialized, initError }: DashboardProps) {
         prId={selectedPrId}
         onClose={() => setSelectedPrId(null)}
       />
+    </div>
+  );
+}
+
+function errorIcon(kind: PollErrorKind) {
+  switch (kind) {
+    case "network":
+      return <WifiOff className="h-4 w-4" />;
+    case "auth":
+      return <KeyRound className="h-4 w-4" />;
+    case "server":
+      return <ServerCrash className="h-4 w-4" />;
+    default:
+      return <Mountain className="h-4 w-4" />;
+  }
+}
+
+function friendlyTitle(kind: PollErrorKind): string {
+  switch (kind) {
+    case "network":
+      return "Couldn’t reach the server";
+    case "auth":
+      return "Authentication issue";
+    case "server":
+      return "Server hiccup";
+    case "parse":
+      return "Unexpected response";
+    default:
+      return "Something went wrong";
+  }
+}
+
+function ErrorBanner({ errors }: { errors: PollError[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const primaryKind = errors[0]?.kind ?? "unknown";
+  const providers = [...new Set(errors.map((e) => e.provider))].join(", ");
+
+  return (
+    <div className="border-b border-border/50 px-4 py-2.5">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex w-full items-center gap-2 text-left text-muted-foreground transition-colors hover:text-foreground"
+      >
+        {errorIcon(primaryKind)}
+        <span className="flex-1 text-sm">
+          {friendlyTitle(primaryKind)}
+          <span className="ml-1 text-muted-foreground/60">— {providers}</span>
+        </span>
+        {expanded ? (
+          <ChevronUp className="h-3.5 w-3.5" />
+        ) : (
+          <ChevronDown className="h-3.5 w-3.5" />
+        )}
+      </button>
+      {expanded && (
+        <div className="mt-2 space-y-1 pl-6">
+          {errors.map((err, i) => (
+            <p key={i} className="text-xs text-muted-foreground/60 break-all">
+              {err.message}
+            </p>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const RETRY_INTERVAL = 30;
+const MAX_RETRIES = 10;
+
+function FullScreenError({
+  message,
+  onRetry,
+}: {
+  message: string;
+  onRetry?: () => void;
+}) {
+  const [showDetails, setShowDetails] = useState(false);
+  const [countdown, setCountdown] = useState(RETRY_INTERVAL);
+  const [attempt, setAttempt] = useState(1);
+  const timerRef = useRef<ReturnType<typeof setInterval>>(null);
+
+  const doRetry = useCallback(() => {
+    if (attempt >= MAX_RETRIES) return;
+    setAttempt((a) => a + 1);
+    setCountdown(RETRY_INTERVAL);
+    onRetry?.();
+  }, [attempt, onRetry]);
+
+  useEffect(() => {
+    if (attempt >= MAX_RETRIES) return;
+    timerRef.current = setInterval(() => {
+      setCountdown((c) => {
+        if (c <= 1) {
+          doRetry();
+          return RETRY_INTERVAL;
+        }
+        return c - 1;
+      });
+    }, 1000);
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [attempt, doRetry]);
+
+  const handleManualRetry = () => {
+    setCountdown(RETRY_INTERVAL);
+    doRetry();
+  };
+
+  return (
+    <div className="flex flex-col items-center justify-center gap-3 p-16 text-muted-foreground">
+      <Mountain className="h-16 w-16 opacity-15" strokeWidth={1} />
+      <p className="text-sm font-medium">Lost in the clouds</p>
+      <p className="max-w-sm text-center text-xs text-muted-foreground/60">
+        Ridgeline couldn't connect — check your network or token if this
+        persists.
+      </p>
+      {attempt < MAX_RETRIES ? (
+        <p className="text-xs text-muted-foreground/40">
+          Retrying in {countdown}s ({attempt}/{MAX_RETRIES})
+        </p>
+      ) : (
+        <p className="text-xs text-muted-foreground/40">Gave up after {MAX_RETRIES} attempts</p>
+      )}
+      {onRetry && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="mt-1"
+          onClick={handleManualRetry}
+        >
+          <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+          Retry now
+        </Button>
+      )}
+      <button
+        onClick={() => setShowDetails(!showDetails)}
+        className="mt-1 text-xs text-muted-foreground/40 underline decoration-muted-foreground/20 transition-colors hover:text-muted-foreground/60"
+      >
+        {showDetails ? "Hide details" : "Technical details"}
+      </button>
+      {showDetails && (
+        <p className="mt-1 max-w-lg break-all text-center text-xs text-muted-foreground/40">
+          {message}
+        </p>
+      )}
     </div>
   );
 }

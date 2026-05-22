@@ -97,8 +97,11 @@ export interface PollResult {
   errors: PollError[];
 }
 
+export type PollErrorKind = "network" | "auth" | "server" | "parse" | "unknown";
+
 export interface PollError {
   provider: string;
+  kind: PollErrorKind;
   message: string;
 }
 
