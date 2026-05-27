@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.saturate.Ridgeline</id>
+  <name>Ridgeline</name>
+  <summary>Monitor pull requests across Azure DevOps tenants</summary>
+
+  <developer id="io.github.saturate">
+    <name>Saturate</name>
+  </developer>
+
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>AGPL-3.0-or-later</project_license>
+
+  <url type="homepage">https://github.com/Saturate/ridgeline</url>
+  <url type="bugtracker">https://github.com/Saturate/ridgeline/issues</url>
+  <url type="vcs-browser">https://github.com/Saturate/ridgeline</url>
+
+  <description>
+    <p>See all your Azure DevOps pull requests in one place — across organizations, projects, and repositories.</p>
+    <ul>
+      <li>Connect multiple Azure DevOps organizations</li>
+      <li>Separate tabs for reviewing vs. authored PRs</li>
+      <li>Vote status and approval progress at a glance</li>
+      <li>Filters for drafts, providers, and full-text search</li>
+      <li>Desktop notifications for new PRs and vote changes</li>
+      <li>Background polling with configurable refresh interval</li>
+      <li>Dark mode following system preference</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">io.github.saturate.Ridgeline.desktop</launchable>
+
+  <screenshots>
+    <screenshot type="default">
+      <!-- TODO: Replace with Linux screenshot URL -->
+      <image type="source">https://raw.githubusercontent.com/Saturate/ridgeline/master/docs/screenshot-linux.png</image>
+      <caption>Reviewing pull requests across multiple Azure DevOps organizations</caption>
+    </screenshot>
+  </screenshots>
+
+  <branding>
+    <color type="primary" scheme_preference="light">#4A90D9</color>
+    <color type="primary" scheme_preference="dark">#1A2332</color>
+  </branding>
+
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+
+  <requires>
+    <internet>always</internet>
+    <display_length compare="ge" side="longest">900</display_length>
+  </requires>
+
+  <content_rating type="oars-1.1" />
+
+  <releases>
+    <release version="0.5.0" date="2026-05-21">
+      <description>
+        <ul>
+          <li>MCP stdio server for Claude Code integration</li>
+          <li>Render PR descriptions as markdown in detail panel</li>
+          <li>MCP integration section in settings</li>
+          <li>Fix duplicate notifications on restart</li>
+          <li>Show team icon for group reviewers</li>
+        </ul>
+      </description>
+    </release>
+    <release version="0.4.0" date="2026-05-19">
+      <description>
+        <p>Conventional commit badges, build status indicators, Homebrew and WinGet auto-publishing.</p>
+      </description>
+    </release>
+    <release version="0.3.0" date="2026-05-19">
+      <description>
+        <p>Provider color indicators on PR rows.</p>
+      </description>
+    </release>
+    <release version="0.2.0" date="2026-05-18">
+      <description>
+        <p>Migration from TUI to Tauri v2 desktop app with filters, notifications, and CI.</p>
+      </description>
+    </release>
+  </releases>
+</component>
