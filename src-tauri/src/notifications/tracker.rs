@@ -6,14 +6,24 @@ use serde::{Deserialize, Serialize};
 
 use crate::providers::types::{PrId, PullRequest, Vote};
 
+#[derive(Clone, Serialize, Deserialize)]
+struct PrMeta {
+    title: String,
+    repo: String,
+    web_url: String,
+}
+
 #[derive(Serialize, Deserialize, Default)]
 struct TrackerState {
     known_prs: HashSet<String>,
+    #[serde(default)]
+    pr_meta: HashMap<String, PrMeta>,
     vote_states: HashMap<String, Vec<(String, String)>>,
 }
 
 pub struct ChangeTracker {
     known_prs: HashSet<String>,
+    pr_meta: HashMap<String, PrMeta>,
     vote_states: HashMap<String, Vec<(String, Vote)>>,
     state_path: Option<PathBuf>,
 }
@@ -24,6 +34,7 @@ impl ChangeTracker {
 
         let mut tracker = Self {
             known_prs: HashSet::new(),
+            pr_meta: HashMap::new(),
             vote_states: HashMap::new(),
             state_path: state_path.clone(),
         };
@@ -32,6 +43,7 @@ impl ChangeTracker {
             if let Ok(data) = fs::read_to_string(path) {
                 if let Ok(state) = serde_json::from_str::<TrackerState>(&data) {
                     tracker.known_prs = state.known_prs;
+                    tracker.pr_meta = state.pr_meta;
                     tracker.vote_states = state
                         .vote_states
                         .into_iter()
@@ -56,6 +68,21 @@ impl ChangeTracker {
 
         let current_keys: HashSet<String> = prs.iter().map(|pr| pr_key(&pr.id)).collect();
 
+        // Detect completed PRs (were known, now gone)
+        for key in &self.known_prs {
+            if !current_keys.contains(key) {
+                if let Some(meta) = self.pr_meta.get(key) {
+                    changes.push(Change::Completed {
+                        title: meta.title.clone(),
+                        repo: meta.repo.clone(),
+                        web_url: meta.web_url.clone(),
+                    });
+                }
+                self.vote_states.remove(key);
+                self.pr_meta.remove(key);
+            }
+        }
+
         for pr in prs {
             let key = pr_key(&pr.id);
             if !self.known_prs.contains(&key) {
@@ -66,6 +93,15 @@ impl ChangeTracker {
                     web_url: pr.web_url.clone(),
                 });
             }
+
+            self.pr_meta.insert(
+                key.clone(),
+                PrMeta {
+                    title: pr.title.clone(),
+                    repo: format!("{}/{}", pr.repository.project, pr.repository.name),
+                    web_url: pr.web_url.clone(),
+                },
+            );
 
             let current_votes: Vec<(String, Vote)> = pr
                 .reviewers
@@ -111,6 +147,7 @@ impl ChangeTracker {
         let Some(path) = &self.state_path else { return };
         let state = TrackerState {
             known_prs: self.known_prs.clone(),
+            pr_meta: self.pr_meta.clone(),
             vote_states: self
                 .vote_states
                 .iter()
@@ -175,13 +212,20 @@ pub enum Change {
         new_vote: Vote,
         web_url: String,
     },
+    #[serde(rename = "completed")]
+    Completed {
+        title: String,
+        repo: String,
+        web_url: String,
+    },
 }
 
 impl Change {
     pub fn web_url(&self) -> &str {
         match self {
-            Change::NewPr { web_url, .. } => web_url,
-            Change::VoteChanged { web_url, .. } => web_url,
+            Change::NewPr { web_url, .. }
+            | Change::VoteChanged { web_url, .. }
+            | Change::Completed { web_url, .. } => web_url,
         }
     }
 
@@ -189,6 +233,7 @@ impl Change {
         match self {
             Change::NewPr { .. } => "New Pull Request".to_string(),
             Change::VoteChanged { .. } => "Vote Changed".to_string(),
+            Change::Completed { .. } => "PR Completed".to_string(),
         }
     }
 
@@ -212,6 +257,9 @@ impl Change {
                     "{reviewer} voted {} on \"{pr_title}\"",
                     new_vote.symbol()
                 )
+            }
+            Change::Completed { title, repo, .. } => {
+                format!("\"{title}\" in {repo} was completed")
             }
         }
     }

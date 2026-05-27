@@ -176,12 +176,11 @@ pub async fn start_polling(app: AppHandle, state: State<'_, AppState>) -> Result
                         let _ = handle.emit("pr-change", change);
 
                         if notif_config.0 && should_notify(change, &notif_config.1) {
-                            let _ = handle
-                                .notification()
-                                .builder()
-                                .title(change.notification_title())
-                                .body(change.notification_body())
-                                .show();
+                            crate::notifications::sender::send_with_url(
+                                &change.notification_title(),
+                                &change.notification_body(),
+                                change.web_url(),
+                            );
                         }
                     }
                 }
@@ -299,16 +298,16 @@ fn should_notify(change: &Change, config: &NotificationConfig) -> bool {
                 config.vote_changed
             }
         }
+        Change::Completed { .. } => config.completed,
     }
 }
 
 #[tauri::command]
-pub async fn test_notification(app: AppHandle) -> Result<(), String> {
-    app.notification()
-        .builder()
-        .title("Ridgeline")
-        .body("Notifications are working!")
-        .show()
-        .map_err(|e| e.to_string())?;
-    open::that("https://github.com/Saturate/ridgeline").map_err(|e| e.to_string())
+pub async fn test_notification() -> Result<(), String> {
+    crate::notifications::sender::send_with_url(
+        "Ridgeline",
+        "Notifications are working! Click to open the project.",
+        "https://github.com/Saturate/ridgeline",
+    );
+    Ok(())
 }

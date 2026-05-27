@@ -269,6 +269,13 @@ export function SettingsPage({ onDone }: SettingsPageProps) {
             checked={config.general.notifications.build_failed}
             onChange={(v) => handleSaveNotification("build_failed", v)}
           />
+          <Separator />
+          <NotificationToggle
+            label="PR completed"
+            description="When a PR is merged or completed"
+            checked={config.general.notifications.completed}
+            onChange={(v) => handleSaveNotification("completed", v)}
+          />
         </CardContent>
       </Card>
 

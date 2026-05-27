@@ -129,6 +129,7 @@ export interface NotificationConfig {
   vote_changed: boolean;
   waiting_for_author: boolean;
   build_failed: boolean;
+  completed: boolean;
 }
 
 export type ProviderConfig = {
@@ -154,4 +155,5 @@ export type Change =
       prTitle: string;
       reviewer: string;
       newVote: Vote;
-    };
+    }
+  | { type: "completed"; title: string; repo: string };

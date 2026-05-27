@@ -30,8 +30,12 @@ urlencoding = "2"
 base64 = "0.22"
 futures = "0.3"
 open = "5"
+notify-rust = "4"
 rmcp = { version = "1.7", features = ["server", "transport-io", "client"] }
 schemars = "0.8"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+mac-notification-sys = "0.6"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
