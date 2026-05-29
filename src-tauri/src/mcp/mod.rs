@@ -16,19 +16,28 @@ use server::RidgelineMcp;
 
 pub async fn run_stdio() -> anyhow::Result<()> {
     let config = loader::load_config()?;
-    let mut providers: Vec<(Arc<dyn PrProvider>, UserId)> = Vec::new();
-
-    for provider_config in &config.providers {
-        match provider_config {
-            ProviderConfig::AzureDevOps(ado_config) => {
-                let pat = credentials::get_token(&ado_config.name)?;
-                let provider = AzureDevOpsProvider::new(ado_config, &pat);
-                let user = provider.get_current_user().await?;
-                eprintln!("ridgeline-mcp: connected to {} ({})", ado_config.name, user.display_name);
-                providers.push((Arc::new(provider), user));
+    let init_futs: Vec<_> = config
+        .providers
+        .iter()
+        .map(|provider_config| async {
+            match provider_config {
+                ProviderConfig::AzureDevOps(ado_config) => {
+                    let pat = credentials::get_token(&ado_config.name).map_err(|e| {
+                        eprintln!("ridgeline-mcp: skipping provider {}: {}", ado_config.name, e);
+                    }).ok()?;
+                    let provider = AzureDevOpsProvider::new(ado_config, &pat);
+                    let user = provider.get_current_user().await.map_err(|e| {
+                        eprintln!("ridgeline-mcp: skipping provider {}: {}", ado_config.name, e);
+                    }).ok()?;
+                    eprintln!("ridgeline-mcp: connected to {} ({})", ado_config.name, user.display_name);
+                    Some((Arc::new(provider) as Arc<dyn PrProvider>, user))
+                }
             }
-        }
-    }
+        })
+        .collect();
+
+    let providers: Vec<(Arc<dyn PrProvider>, UserId)> =
+        futures::future::join_all(init_futs).await.into_iter().flatten().collect();
 
     if providers.is_empty() {
         eprintln!("ridgeline-mcp: no providers configured");
