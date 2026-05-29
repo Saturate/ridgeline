@@ -57,22 +57,33 @@ pub async fn test_connection(
 #[tauri::command]
 pub async fn init_providers(state: State<'_, AppState>) -> Result<Vec<String>, String> {
     let config = state.config().read().await;
+
+    let init_futs: Vec<_> = config
+        .providers
+        .iter()
+        .map(|provider_config| async {
+            match provider_config {
+                ProviderConfig::AzureDevOps(ado_config) => {
+                    let pat = credentials::get_token(&ado_config.name).map_err(|e| {
+                        eprintln!("skipping provider {}: {}", ado_config.name, e);
+                    }).ok()?;
+                    let provider = AzureDevOpsProvider::new(ado_config, &pat);
+                    let user = provider.get_current_user().await.map_err(|e| {
+                        eprintln!("skipping provider {}: {}", ado_config.name, e);
+                    }).ok()?;
+                    let name = format!("{} ({})", ado_config.name, user.display_name);
+                    Some((Arc::new(provider) as Arc<dyn PrProvider>, user, name))
+                }
+            }
+        })
+        .collect();
+
+    let results = futures::future::join_all(init_futs).await;
     let mut instances: Vec<(Arc<dyn PrProvider>, crate::providers::types::UserId)> = Vec::new();
     let mut names = Vec::new();
-
-    for provider_config in &config.providers {
-        match provider_config {
-            ProviderConfig::AzureDevOps(ado_config) => {
-                let pat = credentials::get_token(&ado_config.name).map_err(|e| e.to_string())?;
-                let provider = AzureDevOpsProvider::new(ado_config, &pat);
-                let user = provider
-                    .get_current_user()
-                    .await
-                    .map_err(|e| e.to_string())?;
-                names.push(format!("{} ({})", ado_config.name, user.display_name));
-                instances.push((Arc::new(provider), user));
-            }
-        }
+    for result in results.into_iter().flatten() {
+        instances.push((result.0, result.1));
+        names.push(result.2);
     }
 
     let mut providers = state.providers().write().await;
