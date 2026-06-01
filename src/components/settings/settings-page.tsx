@@ -10,7 +10,7 @@ import { api } from "@/lib/api";
 import { ProviderForm } from "./provider-form";
 import { getProviderColorMap } from "@/lib/provider-colors";
 import { ArrowUp, ArrowDown } from "lucide-react";
-import type { Config, NotificationConfig, ProviderConfig, ProviderIndicator, TabConfig, TabSource, TabDisplay } from "@/lib/types";
+import type { Config, NotificationConfig, ProviderConfig, ProviderIndicator, TabConfig, TabSource, TabDisplay, DraftFilter } from "@/lib/types";
 
 interface SettingsPageProps {
   onDone: () => void;
@@ -74,7 +74,7 @@ export function SettingsPage({ onDone }: SettingsPageProps) {
   const handleAddTab = () => {
     handleSaveTabs([
       ...config.general.tabs,
-      { label: "New Tab", source: "all" as TabSource, display: "reviewing" as TabDisplay, enabled: true, filter: { max_reviewers: null, hide_drafts: null, branch_prefix: null, cc_type: null } },
+      { label: "New Tab", source: "all" as TabSource, display: "reviewing" as TabDisplay, enabled: true, filter: { max_reviewers: null, drafts: null, branch_prefix: null, cc_type: null } },
     ]);
   };
 
@@ -251,15 +251,16 @@ export function SettingsPage({ onDone }: SettingsPageProps) {
                 <div className="flex gap-0.5">
                   {([
                     { value: null, label: "Default" },
-                    { value: true, label: "Hide" },
-                    { value: false, label: "Show" },
-                  ] as const).map((opt) => (
+                    { value: "hide", label: "Hide" },
+                    { value: "only", label: "Only" },
+                    { value: "show", label: "Show" },
+                  ] as { value: DraftFilter | null; label: string }[]).map((opt) => (
                     <Button
                       key={String(opt.value)}
                       size="sm"
-                      variant={tab.filter.hide_drafts === opt.value ? "default" : "outline"}
+                      variant={tab.filter.drafts === opt.value ? "default" : "outline"}
                       className="h-6 px-2 text-xs"
-                      onClick={() => handleUpdateTab(i, { filter: { ...tab.filter, hide_drafts: opt.value } })}
+                      onClick={() => handleUpdateTab(i, { filter: { ...tab.filter, drafts: opt.value } })}
                     >
                       {opt.label}
                     </Button>

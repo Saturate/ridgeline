@@ -97,7 +97,7 @@ export function Dashboard({ initialized, initError, onRetry }: DashboardProps) {
     (data?.authored ?? []).map((pr) => prIdKey(pr.id)),
   );
 
-  const emptyFilter = { max_reviewers: null, hide_drafts: null, branch_prefix: null, cc_type: null };
+  const emptyFilter = { max_reviewers: null, drafts: null, branch_prefix: null, cc_type: null };
   const defaultTabs: TabConfig[] = [
     { label: "Reviewing", source: "reviewing", display: "reviewing", enabled: true, filter: emptyFilter },
     { label: "Authored", source: "authored", display: "authored", enabled: true, filter: emptyFilter },
@@ -149,8 +149,16 @@ export function Dashboard({ initialized, initError, onRetry }: DashboardProps) {
   const tabData = tabs.map((tab, i) => {
     const sourcePrs = getPrsForSource(tab.source);
     const tabFiltered = applyTabFilter(sourcePrs, tab);
-    const effectiveHideDrafts = tab.filter.hide_drafts ?? hideDrafts;
-    const prs = filterPrs(tabFiltered, search, effectiveHideDrafts, activeProviders);
+    let draftFiltered = tabFiltered;
+    if (tab.filter.drafts === "hide") {
+      draftFiltered = draftFiltered.filter((pr) => !pr.isDraft);
+    } else if (tab.filter.drafts === "only") {
+      draftFiltered = draftFiltered.filter((pr) => pr.isDraft);
+    } else if (tab.filter.drafts === "show") {
+      // show all, skip global filter
+    }
+    const effectiveHideDrafts = tab.filter.drafts ? false : hideDrafts;
+    const prs = filterPrs(draftFiltered, search, effectiveHideDrafts, activeProviders);
     return { tab, prs, key: `${tab.label}-${i}` };
   });
 

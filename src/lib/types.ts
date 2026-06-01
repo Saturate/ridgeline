@@ -136,9 +136,11 @@ export interface TabConfig {
   filter: TabFilter;
 }
 
+export type DraftFilter = "hide" | "only" | "show";
+
 export interface TabFilter {
   max_reviewers: number | null;
-  hide_drafts: boolean | null;
+  drafts: DraftFilter | null;
   branch_prefix: string | null;
   cc_type: string | null;
 }
