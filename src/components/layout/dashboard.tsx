@@ -171,7 +171,7 @@ export function Dashboard({ initialized, initError, onRetry }: DashboardProps) {
         <ErrorBanner errors={data.errors} />
       )}
 
-      <div className="flex items-center gap-2 border-b px-4 py-2">
+      <div className="sticky top-0 z-10 flex items-center gap-2 border-b bg-background px-4 py-2">
         <div className="relative flex-1">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
@@ -228,7 +228,7 @@ export function Dashboard({ initialized, initError, onRetry }: DashboardProps) {
       </div>
 
       <Tabs defaultValue={tabData[0]?.key} className="flex flex-1 flex-col">
-        <div className="border-b px-4">
+        <div className="sticky top-[52px] z-10 border-b bg-background px-4">
           <TabsList className="h-9">
             {tabData.map(({ tab, prs, key }) => (
               <TabsTrigger key={key} value={key} className="gap-1.5 text-xs">
