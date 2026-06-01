@@ -10,7 +10,8 @@ import { api } from "@/lib/api";
 import { ProviderForm } from "./provider-form";
 import { getProviderColorMap } from "@/lib/provider-colors";
 import { ArrowUp, ArrowDown } from "lucide-react";
-import type { Config, NotificationConfig, ProviderConfig, ProviderIndicator, TabConfig, TabSource, TabDisplay, DraftFilter } from "@/lib/types";
+import { TabForm } from "./tab-form";
+import type { Config, NotificationConfig, ProviderConfig, ProviderIndicator, TabConfig } from "@/lib/types";
 
 interface SettingsPageProps {
   onDone: () => void;
@@ -21,6 +22,8 @@ export function SettingsPage({ onDone }: SettingsPageProps) {
   const saveConfig = useSaveConfig();
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
+  const [editingTabIndex, setEditingTabIndex] = useState<number | null>(null);
+  const [addingTab, setAddingTab] = useState(false);
 
   if (isLoading || !config) return null;
 
@@ -71,11 +74,16 @@ export function SettingsPage({ onDone }: SettingsPageProps) {
     });
   };
 
-  const handleAddTab = () => {
-    handleSaveTabs([
-      ...config.general.tabs,
-      { label: "New Tab", source: "all" as TabSource, display: "reviewing" as TabDisplay, enabled: true, filter: { max_reviewers: null, drafts: null, branch_prefix: null, cc_types: [] } },
-    ]);
+  const handleSaveTab = (tab: TabConfig, index: number | null) => {
+    const tabs = [...config.general.tabs];
+    if (index !== null) {
+      tabs[index] = tab;
+    } else {
+      tabs.push(tab);
+    }
+    handleSaveTabs(tabs);
+    setEditingTabIndex(null);
+    setAddingTab(false);
   };
 
   const handleUpdateTab = (index: number, updates: Partial<TabConfig>) => {
@@ -185,160 +193,73 @@ export function SettingsPage({ onDone }: SettingsPageProps) {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle className="text-base">Tabs</CardTitle>
-          <Button size="sm" variant="outline" onClick={handleAddTab}>
-            <Plus className="mr-1 h-4 w-4" />
-            Add Tab
-          </Button>
+          {!addingTab && editingTabIndex === null && (
+            <Button size="sm" variant="outline" onClick={() => setAddingTab(true)}>
+              <Plus className="mr-1 h-4 w-4" />
+              Add Tab
+            </Button>
+          )}
         </CardHeader>
         <CardContent className="space-y-3">
-          {config.general.tabs.map((tab, i) => (
-            <div key={i} className={`rounded-md border p-3 space-y-2.5 ${!tab.enabled ? "opacity-50" : ""}`}>
-              <div className="flex items-center gap-2">
-                <button
-                  role="switch"
-                  aria-checked={tab.enabled}
-                  onClick={() => handleUpdateTab(i, { enabled: !tab.enabled })}
-                  className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors ${tab.enabled ? "bg-primary" : "bg-input"}`}
-                >
-                  <span className={`inline-block h-3 w-3 rounded-full bg-background shadow-sm transition-transform ${tab.enabled ? "translate-x-3.5" : "translate-x-0.5"}`} />
-                </button>
-                <Input
-                  className="h-7 flex-1 text-sm"
-                  value={tab.label}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                    handleUpdateTab(i, { label: e.target.value })
-                  }
-                />
-                <div className="flex items-center">
-                  <Button variant="ghost" size="icon" className="h-7 w-7" disabled={i === 0} onClick={() => handleMoveTab(i, -1)}>
-                    <ArrowUp className="h-3 w-3" />
+          {config.general.tabs.map((tab, i) =>
+            editingTabIndex === i ? (
+              <TabForm
+                key={i}
+                initial={tab}
+                onSave={(t) => handleSaveTab(t, i)}
+                onCancel={() => setEditingTabIndex(null)}
+              />
+            ) : (
+              <div
+                key={i}
+                className={`flex items-center justify-between rounded-md border p-3 ${!tab.enabled ? "opacity-50" : ""}`}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <button
+                    role="switch"
+                    aria-checked={tab.enabled}
+                    onClick={() => handleUpdateTab(i, { enabled: !tab.enabled })}
+                    className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors ${tab.enabled ? "bg-primary" : "bg-input"}`}
+                  >
+                    <span className={`inline-block h-3 w-3 rounded-full bg-background shadow-sm transition-transform ${tab.enabled ? "translate-x-3.5" : "translate-x-0.5"}`} />
+                  </button>
+                  <div className="min-w-0">
+                    <span className="text-sm font-medium">{tab.label}</span>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {tabSummary(tab)}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Button variant="ghost" size="icon" className="h-8 w-8" disabled={i === 0} onClick={() => handleMoveTab(i, -1)}>
+                    <ArrowUp className="h-3.5 w-3.5" />
                   </Button>
-                  <Button variant="ghost" size="icon" className="h-7 w-7" disabled={i === config.general.tabs.length - 1} onClick={() => handleMoveTab(i, 1)}>
-                    <ArrowDown className="h-3 w-3" />
+                  <Button variant="ghost" size="icon" className="h-8 w-8" disabled={i === config.general.tabs.length - 1} onClick={() => handleMoveTab(i, 1)}>
+                    <ArrowDown className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingTabIndex(i)}>
+                    <Pencil className="h-3.5 w-3.5" />
                   </Button>
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-7 w-7 text-destructive"
+                    className="h-8 w-8 text-destructive"
                     disabled={config.general.tabs.filter((t) => t.enabled).length <= 1 && tab.enabled}
                     onClick={() => handleDeleteTab(i)}
                   >
-                    <Trash2 className="h-3 w-3" />
+                    <Trash2 className="h-3.5 w-3.5" />
                   </Button>
                 </div>
               </div>
-
-              <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-xs items-center pl-9">
-                <span className="text-muted-foreground">Show PRs from</span>
-                <div className="flex gap-0.5">
-                  {([
-                    { value: "reviewing" as TabSource, label: "Reviewing" },
-                    { value: "authored" as TabSource, label: "My PRs" },
-                    { value: "all" as TabSource, label: "Everything" },
-                  ]).map((s) => (
-                    <Button key={s.value} size="sm" variant={tab.source === s.value ? "default" : "outline"} className="h-6 px-2 text-xs" onClick={() => handleUpdateTab(i, { source: s.value })}>
-                      {s.label}
-                    </Button>
-                  ))}
-                </div>
-
-                <span className="text-muted-foreground">Row style</span>
-                <div className="flex gap-0.5">
-                  {([
-                    { value: "reviewing" as TabDisplay, label: "Votes" },
-                    { value: "authored" as TabDisplay, label: "Status" },
-                  ]).map((d) => (
-                    <Button key={d.value} size="sm" variant={tab.display === d.value ? "default" : "outline"} className="h-6 px-2 text-xs" onClick={() => handleUpdateTab(i, { display: d.value })}>
-                      {d.label}
-                    </Button>
-                  ))}
-                </div>
-
-                <span className="text-muted-foreground">Drafts</span>
-                <div className="flex gap-0.5">
-                  {([
-                    { value: null, label: "Default" },
-                    { value: "hide", label: "Hide" },
-                    { value: "only", label: "Only" },
-                    { value: "show", label: "Show" },
-                  ] as { value: DraftFilter | null; label: string }[]).map((opt) => (
-                    <Button
-                      key={String(opt.value)}
-                      size="sm"
-                      variant={tab.filter.drafts === opt.value ? "default" : "outline"}
-                      className="h-6 px-2 text-xs"
-                      onClick={() => handleUpdateTab(i, { filter: { ...tab.filter, drafts: opt.value } })}
-                    >
-                      {opt.label}
-                    </Button>
-                  ))}
-                </div>
-
-                <span className="text-muted-foreground">Max reviewers</span>
-                <div>
-                  <Input
-                    type="number"
-                    className="h-6 w-16 text-xs"
-                    placeholder="any"
-                    min={0}
-                    value={tab.filter.max_reviewers ?? ""}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                      handleUpdateTab(i, {
-                        filter: {
-                          ...tab.filter,
-                          max_reviewers: e.target.value === "" ? null : parseInt(e.target.value),
-                        },
-                      })
-                    }
-                  />
-                </div>
-
-                <span className="text-muted-foreground">Branch prefix</span>
-                <div>
-                  <Input
-                    className="h-6 w-32 text-xs"
-                    placeholder="e.g. fix/"
-                    value={tab.filter.branch_prefix ?? ""}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                      handleUpdateTab(i, {
-                        filter: {
-                          ...tab.filter,
-                          branch_prefix: e.target.value || null,
-                        },
-                      })
-                    }
-                  />
-                </div>
-
-                <span className="text-muted-foreground">Commit types</span>
-                <div className="flex flex-wrap gap-0.5">
-                  {["feat", "fix", "refactor", "perf", "docs", "test", "chore"].map((t) => {
-                    const types = tab.filter.cc_types ?? [];
-                    const active = types.includes(t);
-                    return (
-                      <Button
-                        key={t}
-                        size="sm"
-                        variant={active ? "default" : "outline"}
-                        className="h-6 px-2 text-xs"
-                        onClick={() => handleUpdateTab(i, {
-                          filter: {
-                            ...tab.filter,
-                            cc_types: active
-                              ? types.filter((x) => x !== t)
-                              : [...types, t],
-                          },
-                        })}
-                      >
-                        {t}
-                      </Button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          ))}
-          {config.general.tabs.length === 0 && (
+            ),
+          )}
+          {addingTab && (
+            <TabForm
+              onSave={(t) => handleSaveTab(t, null)}
+              onCancel={() => setAddingTab(false)}
+            />
+          )}
+          {config.general.tabs.length === 0 && !addingTab && (
             <p className="text-sm text-muted-foreground py-2">No tabs configured. Click "Add Tab" to create one.</p>
           )}
         </CardContent>
@@ -616,6 +537,19 @@ function NotificationToggle({
       </button>
     </label>
   );
+}
+
+const SOURCE_LABELS: Record<string, string> = { reviewing: "Reviewing", authored: "My PRs", all: "Everything" };
+const DISPLAY_LABELS: Record<string, string> = { reviewing: "Votes", authored: "Status" };
+
+function tabSummary(tab: TabConfig): string {
+  const parts = [SOURCE_LABELS[tab.source] ?? tab.source, DISPLAY_LABELS[tab.display] ?? tab.display];
+  if (tab.filter.drafts) parts.push(`drafts: ${tab.filter.drafts}`);
+  if (tab.filter.max_reviewers != null) parts.push(`max ${tab.filter.max_reviewers} reviewers`);
+  if (tab.filter.branch_prefix) parts.push(tab.filter.branch_prefix + "*");
+  const types = tab.filter.cc_types ?? [];
+  if (types.length > 0) parts.push(types.join(", "));
+  return parts.join(" · ");
 }
 
 function CopyBlock({ text, label }: { text: string; label?: string }) {
