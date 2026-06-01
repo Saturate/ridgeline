@@ -229,20 +229,27 @@ export function SettingsPage({ onDone }: SettingsPageProps) {
               </div>
 
               <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-xs items-center pl-9">
-                <span className="text-muted-foreground">Source</span>
+                <span className="text-muted-foreground">Show PRs from</span>
                 <div className="flex gap-0.5">
-                  {(["reviewing", "authored", "all"] as TabSource[]).map((s) => (
-                    <Button key={s} size="sm" variant={tab.source === s ? "default" : "outline"} className="h-6 px-2 text-xs capitalize" onClick={() => handleUpdateTab(i, { source: s })}>
-                      {s}
+                  {([
+                    { value: "reviewing" as TabSource, label: "Reviewing" },
+                    { value: "authored" as TabSource, label: "My PRs" },
+                    { value: "all" as TabSource, label: "Everything" },
+                  ]).map((s) => (
+                    <Button key={s.value} size="sm" variant={tab.source === s.value ? "default" : "outline"} className="h-6 px-2 text-xs" onClick={() => handleUpdateTab(i, { source: s.value })}>
+                      {s.label}
                     </Button>
                   ))}
                 </div>
 
-                <span className="text-muted-foreground">Display</span>
+                <span className="text-muted-foreground">Row style</span>
                 <div className="flex gap-0.5">
-                  {(["reviewing", "authored"] as TabDisplay[]).map((d) => (
-                    <Button key={d} size="sm" variant={tab.display === d ? "default" : "outline"} className="h-6 px-2 text-xs capitalize" onClick={() => handleUpdateTab(i, { display: d })}>
-                      {d}
+                  {([
+                    { value: "reviewing" as TabDisplay, label: "Votes" },
+                    { value: "authored" as TabDisplay, label: "Status" },
+                  ]).map((d) => (
+                    <Button key={d.value} size="sm" variant={tab.display === d.value ? "default" : "outline"} className="h-6 px-2 text-xs" onClick={() => handleUpdateTab(i, { display: d.value })}>
+                      {d.label}
                     </Button>
                   ))}
                 </div>
