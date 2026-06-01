@@ -136,7 +136,7 @@ export function Dashboard({ initialized, initError, onRetry }: DashboardProps) {
       const prefix = tab.filter.branch_prefix.toLowerCase();
       filtered = filtered.filter((pr) => pr.sourceBranch.toLowerCase().startsWith(prefix));
     }
-    if (tab.filter.cc_types.length > 0) {
+    if (tab.filter.cc_types?.length > 0) {
       const types = new Set(tab.filter.cc_types.map((t) => t.toLowerCase()));
       filtered = filtered.filter((pr) => {
         const cc = parseConventionalCommit(pr.title);

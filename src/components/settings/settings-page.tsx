@@ -313,7 +313,8 @@ export function SettingsPage({ onDone }: SettingsPageProps) {
                 <span className="text-muted-foreground">Commit types</span>
                 <div className="flex flex-wrap gap-0.5">
                   {["feat", "fix", "refactor", "perf", "docs", "test", "chore"].map((t) => {
-                    const active = tab.filter.cc_types.includes(t);
+                    const types = tab.filter.cc_types ?? [];
+                    const active = types.includes(t);
                     return (
                       <Button
                         key={t}
@@ -324,8 +325,8 @@ export function SettingsPage({ onDone }: SettingsPageProps) {
                           filter: {
                             ...tab.filter,
                             cc_types: active
-                              ? tab.filter.cc_types.filter((x) => x !== t)
-                              : [...tab.filter.cc_types, t],
+                              ? types.filter((x) => x !== t)
+                              : [...types, t],
                           },
                         })}
                       >
