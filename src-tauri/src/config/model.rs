@@ -28,6 +28,8 @@ pub struct GeneralConfig {
     pub show_project_name: bool,
     #[serde(default)]
     pub parse_conventional_commits: bool,
+    #[serde(default = "default_tabs")]
+    pub tabs: Vec<TabConfig>,
 }
 
 impl Default for GeneralConfig {
@@ -42,6 +44,7 @@ impl Default for GeneralConfig {
             age_danger_hours: default_danger_hours(),
             show_project_name: true,
             parse_conventional_commits: false,
+            tabs: default_tabs(),
         }
     }
 }
@@ -104,6 +107,80 @@ fn default_danger_hours() -> u64 {
 
 fn default_true() -> bool {
     true
+}
+
+fn default_tabs() -> Vec<TabConfig> {
+    vec![
+        TabConfig {
+            label: "Reviewing".into(),
+            source: TabSource::Reviewing,
+            display: TabDisplay::Reviewing,
+            enabled: true,
+            filter: TabFilter::default(),
+        },
+        TabConfig {
+            label: "Authored".into(),
+            source: TabSource::Authored,
+            display: TabDisplay::Authored,
+            enabled: true,
+            filter: TabFilter::default(),
+        },
+        TabConfig {
+            label: "Up for grabs".into(),
+            source: TabSource::All,
+            display: TabDisplay::Reviewing,
+            enabled: false,
+            filter: TabFilter {
+                max_reviewers: Some(0),
+            },
+        },
+    ]
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TabConfig {
+    pub label: String,
+    #[serde(default = "TabSource::default")]
+    pub source: TabSource,
+    #[serde(default = "TabDisplay::default")]
+    pub display: TabDisplay,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub filter: TabFilter,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum TabSource {
+    Reviewing,
+    Authored,
+    All,
+}
+
+impl Default for TabSource {
+    fn default() -> Self {
+        Self::Reviewing
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum TabDisplay {
+    Reviewing,
+    Authored,
+}
+
+impl Default for TabDisplay {
+    fn default() -> Self {
+        Self::Reviewing
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct TabFilter {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_reviewers: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

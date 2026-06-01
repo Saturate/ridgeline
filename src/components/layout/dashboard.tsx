@@ -19,7 +19,7 @@ import { PrList } from "@/components/pr/pr-list";
 import { PrDetailPanel } from "@/components/pr/pr-detail-panel";
 import { useConfig } from "@/lib/hooks/use-config";
 import { getProviderColorMap } from "@/lib/provider-colors";
-import type { PrId, PollError, PollErrorKind, PullRequest } from "@/lib/types";
+import type { PrId, PollError, PollErrorKind, PullRequest, TabConfig, TabSource } from "@/lib/types";
 
 interface DashboardProps {
   initialized: boolean;
@@ -95,18 +95,51 @@ export function Dashboard({ initialized, initError, onRetry }: DashboardProps) {
   const authoredIds = new Set(
     (data?.authored ?? []).map((pr) => prIdKey(pr.id)),
   );
-  const reviewing = filterPrs(
-    (data?.reviewing ?? []).filter((pr) => !authoredIds.has(prIdKey(pr.id))),
-    search,
-    hideDrafts,
-    activeProviders,
-  );
-  const authored = filterPrs(
-    data?.authored ?? [],
-    search,
-    hideDrafts,
-    activeProviders,
-  );
+
+  const defaultTabs: TabConfig[] = [
+    { label: "Reviewing", source: "reviewing", display: "reviewing", enabled: true, filter: { max_reviewers: null } },
+    { label: "Authored", source: "authored", display: "authored", enabled: true, filter: { max_reviewers: null } },
+  ];
+  const tabs = (config?.general.tabs?.filter((t) => t.enabled) ?? []).length > 0
+    ? config!.general.tabs.filter((t) => t.enabled)
+    : defaultTabs;
+
+  const getPrsForSource = (source: TabSource): PullRequest[] => {
+    switch (source) {
+      case "reviewing":
+        return (data?.reviewing ?? []).filter((pr) => !authoredIds.has(prIdKey(pr.id)));
+      case "authored":
+        return data?.authored ?? [];
+      case "all": {
+        const seen = new Set<string>();
+        const combined: PullRequest[] = [];
+        for (const pr of [...(data?.reviewing ?? []), ...(data?.authored ?? [])]) {
+          const key = prIdKey(pr.id);
+          if (!seen.has(key)) {
+            seen.add(key);
+            combined.push(pr);
+          }
+        }
+        return combined;
+      }
+    }
+  };
+
+  const applyTabFilter = (prs: PullRequest[], tab: TabConfig): PullRequest[] => {
+    let filtered = prs;
+    if (tab.filter.max_reviewers !== null && tab.filter.max_reviewers !== undefined) {
+      filtered = filtered.filter((pr) => pr.reviewers.length <= tab.filter.max_reviewers!);
+    }
+    return filtered;
+  };
+
+  const tabData = tabs.map((tab, i) => {
+    const sourcePrs = getPrsForSource(tab.source);
+    const tabFiltered = applyTabFilter(sourcePrs, tab);
+    const prs = filterPrs(tabFiltered, search, hideDrafts, activeProviders);
+    return { tab, prs, key: `${tab.label}-${i}` };
+  });
+
   const hasActiveFilters =
     hideDrafts || (enabledProviders !== null && enabledProviders.size < allProviders.length);
 
@@ -172,31 +205,26 @@ export function Dashboard({ initialized, initError, onRetry }: DashboardProps) {
         </DropdownMenu>
       </div>
 
-      <Tabs defaultValue="reviewing" className="flex flex-1 flex-col">
+      <Tabs defaultValue={tabData[0]?.key} className="flex flex-1 flex-col">
         <div className="border-b px-4">
           <TabsList className="h-9">
-            <TabsTrigger value="reviewing" className="gap-1.5 text-xs">
-              Reviewing
-              <Badge variant="secondary" className="h-5 px-1.5 text-xs">
-                {reviewing.length}
-              </Badge>
-            </TabsTrigger>
-            <TabsTrigger value="authored" className="gap-1.5 text-xs">
-              Authored
-              <Badge variant="secondary" className="h-5 px-1.5 text-xs">
-                {authored.length}
-              </Badge>
-            </TabsTrigger>
+            {tabData.map(({ tab, prs, key }) => (
+              <TabsTrigger key={key} value={key} className="gap-1.5 text-xs">
+                {tab.label}
+                <Badge variant="secondary" className="h-5 px-1.5 text-xs">
+                  {prs.length}
+                </Badge>
+              </TabsTrigger>
+            ))}
           </TabsList>
         </div>
 
         <ScrollArea className="flex-1">
-          <TabsContent value="reviewing" className="m-0">
-            <PrList prs={reviewing} variant="reviewing" providerColors={providerColors} indicatorMode={indicatorMode} warningHours={warningHours} dangerHours={dangerHours} showProjectName={showProjectName} parseCC={parseCC} onSelect={setSelectedPrId} />
-          </TabsContent>
-          <TabsContent value="authored" className="m-0">
-            <PrList prs={authored} variant="authored" providerColors={providerColors} indicatorMode={indicatorMode} warningHours={warningHours} dangerHours={dangerHours} showProjectName={showProjectName} parseCC={parseCC} onSelect={setSelectedPrId} />
-          </TabsContent>
+          {tabData.map(({ tab, prs, key }) => (
+            <TabsContent key={key} value={key} className="m-0">
+              <PrList prs={prs} variant={tab.display} providerColors={providerColors} indicatorMode={indicatorMode} warningHours={warningHours} dangerHours={dangerHours} showProjectName={showProjectName} parseCC={parseCC} onSelect={setSelectedPrId} />
+            </TabsContent>
+          ))}
         </ScrollArea>
       </Tabs>
 

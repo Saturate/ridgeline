@@ -9,7 +9,8 @@ import { useConfig, useSaveConfig } from "@/lib/hooks/use-config";
 import { api } from "@/lib/api";
 import { ProviderForm } from "./provider-form";
 import { getProviderColorMap } from "@/lib/provider-colors";
-import type { Config, NotificationConfig, ProviderConfig, ProviderIndicator } from "@/lib/types";
+import { ArrowUp, ArrowDown } from "lucide-react";
+import type { Config, NotificationConfig, ProviderConfig, ProviderIndicator, TabConfig, TabSource, TabDisplay } from "@/lib/types";
 
 interface SettingsPageProps {
   onDone: () => void;
@@ -61,6 +62,42 @@ export function SettingsPage({ onDone }: SettingsPageProps) {
         notifications: { ...config.general.notifications, [field]: value },
       },
     });
+  };
+
+  const handleSaveTabs = (tabs: TabConfig[]) => {
+    saveConfig.mutate({
+      ...config,
+      general: { ...config.general, tabs },
+    });
+  };
+
+  const handleAddTab = () => {
+    handleSaveTabs([
+      ...config.general.tabs,
+      { label: "New Tab", source: "all" as TabSource, display: "reviewing" as TabDisplay, enabled: true, filter: { max_reviewers: null } },
+    ]);
+  };
+
+  const handleUpdateTab = (index: number, updates: Partial<TabConfig>) => {
+    const tabs = config.general.tabs.map((t, i) =>
+      i === index ? { ...t, ...updates } : t,
+    );
+    handleSaveTabs(tabs);
+  };
+
+  const handleDeleteTab = (index: number) => {
+    handleSaveTabs(config.general.tabs.filter((_, i) => i !== index));
+  };
+
+  const handleMoveTab = (index: number, direction: -1 | 1) => {
+    const tabs = [...config.general.tabs];
+    const target = index + direction;
+    const a = tabs[index];
+    const b = tabs[target];
+    if (!a || !b) return;
+    tabs[index] = b;
+    tabs[target] = a;
+    handleSaveTabs(tabs);
   };
 
   return (
@@ -141,6 +178,125 @@ export function SettingsPage({ onDone }: SettingsPageProps) {
               onSave={(p) => handleSaveProvider(p, null)}
               onCancel={() => setAdding(false)}
             />
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <CardTitle className="text-base">Tabs</CardTitle>
+          <Button size="sm" variant="outline" onClick={handleAddTab}>
+            <Plus className="mr-1 h-4 w-4" />
+            Add Tab
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {config.general.tabs.map((tab, i) => (
+            <div key={i} className="rounded-md border p-3 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <Input
+                  className="h-8 flex-1"
+                  value={tab.label}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                    handleUpdateTab(i, { label: e.target.value })
+                  }
+                />
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    disabled={i === 0}
+                    onClick={() => handleMoveTab(i, -1)}
+                  >
+                    <ArrowUp className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    disabled={i === config.general.tabs.length - 1}
+                    onClick={() => handleMoveTab(i, 1)}
+                  >
+                    <ArrowDown className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-destructive"
+                    disabled={config.general.tabs.filter((t) => t.enabled).length <= 1 && tab.enabled}
+                    onClick={() => handleDeleteTab(i)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3 text-xs">
+                <NotificationToggle
+                  label="Enabled"
+                  description=""
+                  checked={tab.enabled}
+                  onChange={(v) => handleUpdateTab(i, { enabled: v })}
+                />
+
+                <div className="flex items-center gap-1.5">
+                  <span className="text-muted-foreground">Source:</span>
+                  <div className="flex gap-0.5">
+                    {(["reviewing", "authored", "all"] as TabSource[]).map((s) => (
+                      <Button
+                        key={s}
+                        size="sm"
+                        variant={tab.source === s ? "default" : "outline"}
+                        className="h-6 px-2 text-xs capitalize"
+                        onClick={() => handleUpdateTab(i, { source: s })}
+                      >
+                        {s}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <span className="text-muted-foreground">Display:</span>
+                  <div className="flex gap-0.5">
+                    {(["reviewing", "authored"] as TabDisplay[]).map((d) => (
+                      <Button
+                        key={d}
+                        size="sm"
+                        variant={tab.display === d ? "default" : "outline"}
+                        className="h-6 px-2 text-xs capitalize"
+                        onClick={() => handleUpdateTab(i, { display: d })}
+                      >
+                        {d}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <span className="text-muted-foreground">Max reviewers:</span>
+                  <Input
+                    type="number"
+                    className="h-6 w-16 text-xs"
+                    placeholder="any"
+                    min={0}
+                    value={tab.filter.max_reviewers ?? ""}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                      handleUpdateTab(i, {
+                        filter: {
+                          ...tab.filter,
+                          max_reviewers: e.target.value === "" ? null : parseInt(e.target.value),
+                        },
+                      })
+                    }
+                  />
+                </div>
+              </div>
+            </div>
+          ))}
+          {config.general.tabs.length === 0 && (
+            <p className="text-sm text-muted-foreground py-2">No tabs configured. Click "Add Tab" to create one.</p>
           )}
         </CardContent>
       </Card>

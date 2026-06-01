@@ -122,6 +122,22 @@ export interface GeneralConfig {
   age_danger_hours: number;
   show_project_name: boolean;
   parse_conventional_commits: boolean;
+  tabs: TabConfig[];
+}
+
+export type TabSource = "reviewing" | "authored" | "all";
+export type TabDisplay = "reviewing" | "authored";
+
+export interface TabConfig {
+  label: string;
+  source: TabSource;
+  display: TabDisplay;
+  enabled: boolean;
+  filter: TabFilter;
+}
+
+export interface TabFilter {
+  max_reviewers: number | null;
 }
 
 export interface NotificationConfig {
