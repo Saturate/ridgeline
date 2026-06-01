@@ -74,7 +74,7 @@ export function SettingsPage({ onDone }: SettingsPageProps) {
   const handleAddTab = () => {
     handleSaveTabs([
       ...config.general.tabs,
-      { label: "New Tab", source: "all" as TabSource, display: "reviewing" as TabDisplay, enabled: true, filter: { max_reviewers: null, drafts: null, branch_prefix: null, cc_type: null } },
+      { label: "New Tab", source: "all" as TabSource, display: "reviewing" as TabDisplay, enabled: true, filter: { max_reviewers: null, drafts: null, branch_prefix: null, cc_types: [] } },
     ]);
   };
 
@@ -310,21 +310,29 @@ export function SettingsPage({ onDone }: SettingsPageProps) {
                   />
                 </div>
 
-                <span className="text-muted-foreground">Commit type</span>
+                <span className="text-muted-foreground">Commit types</span>
                 <div className="flex flex-wrap gap-0.5">
-                  {["feat", "fix", "refactor", "perf", "docs", "test", "chore"].map((t) => (
-                    <Button
-                      key={t}
-                      size="sm"
-                      variant={tab.filter.cc_type === t ? "default" : "outline"}
-                      className="h-6 px-2 text-xs"
-                      onClick={() => handleUpdateTab(i, {
-                        filter: { ...tab.filter, cc_type: tab.filter.cc_type === t ? null : t },
-                      })}
-                    >
-                      {t}
-                    </Button>
-                  ))}
+                  {["feat", "fix", "refactor", "perf", "docs", "test", "chore"].map((t) => {
+                    const active = tab.filter.cc_types.includes(t);
+                    return (
+                      <Button
+                        key={t}
+                        size="sm"
+                        variant={active ? "default" : "outline"}
+                        className="h-6 px-2 text-xs"
+                        onClick={() => handleUpdateTab(i, {
+                          filter: {
+                            ...tab.filter,
+                            cc_types: active
+                              ? tab.filter.cc_types.filter((x) => x !== t)
+                              : [...tab.filter.cc_types, t],
+                          },
+                        })}
+                      >
+                        {t}
+                      </Button>
+                    );
+                  })}
                 </div>
               </div>
             </div>

@@ -195,8 +195,8 @@ pub struct TabFilter {
     pub drafts: Option<DraftFilter>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub branch_prefix: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cc_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cc_types: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -142,7 +142,7 @@ export interface TabFilter {
   max_reviewers: number | null;
   drafts: DraftFilter | null;
   branch_prefix: string | null;
-  cc_type: string | null;
+  cc_types: string[];
 }
 
 export interface NotificationConfig {

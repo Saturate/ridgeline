@@ -97,7 +97,7 @@ export function Dashboard({ initialized, initError, onRetry }: DashboardProps) {
     (data?.authored ?? []).map((pr) => prIdKey(pr.id)),
   );
 
-  const emptyFilter = { max_reviewers: null, drafts: null, branch_prefix: null, cc_type: null };
+  const emptyFilter = { max_reviewers: null, drafts: null, branch_prefix: null, cc_types: [] };
   const defaultTabs: TabConfig[] = [
     { label: "Reviewing", source: "reviewing", display: "reviewing", enabled: true, filter: emptyFilter },
     { label: "Authored", source: "authored", display: "authored", enabled: true, filter: emptyFilter },
@@ -136,11 +136,11 @@ export function Dashboard({ initialized, initError, onRetry }: DashboardProps) {
       const prefix = tab.filter.branch_prefix.toLowerCase();
       filtered = filtered.filter((pr) => pr.sourceBranch.toLowerCase().startsWith(prefix));
     }
-    if (tab.filter.cc_type) {
-      const ccType = tab.filter.cc_type.toLowerCase();
+    if (tab.filter.cc_types.length > 0) {
+      const types = new Set(tab.filter.cc_types.map((t) => t.toLowerCase()));
       filtered = filtered.filter((pr) => {
         const cc = parseConventionalCommit(pr.title);
-        return cc !== null && cc.type.toLowerCase() === ccType;
+        return cc !== null && types.has(cc.type.toLowerCase());
       });
     }
     return filtered;
