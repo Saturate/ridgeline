@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Sheet,
   SheetContent,
@@ -50,6 +50,9 @@ function emptyTab(): TabConfig {
 
 export function TabFormSheet({ open, initial, onSave, onClose }: TabFormProps) {
   const [tab, setTab] = useState<TabConfig>(initial ?? emptyTab());
+  useEffect(() => {
+    setTab(initial ?? emptyTab());
+  }, [open]);
   const update = (patch: Partial<TabConfig>) => setTab((t) => ({ ...t, ...patch }));
   const updateFilter = (patch: Partial<TabConfig["filter"]>) =>
     setTab((t) => ({ ...t, filter: { ...t.filter, ...patch } }));
