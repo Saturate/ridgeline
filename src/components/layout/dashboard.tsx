@@ -227,7 +227,7 @@ export function Dashboard({ initialized, initError, onRetry }: DashboardProps) {
         </DropdownMenu>
       </div>
 
-      <Tabs defaultValue={tabData[0]?.key} className="flex flex-1 flex-col">
+      <Tabs defaultValue={tabData[0]?.key} className="flex min-h-0 flex-1 flex-col">
         <div className="border-b px-4">
           <TabsList className="h-9">
             {tabData.map(({ tab, prs, key }) => (
