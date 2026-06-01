@@ -74,7 +74,7 @@ export function SettingsPage({ onDone }: SettingsPageProps) {
   const handleAddTab = () => {
     handleSaveTabs([
       ...config.general.tabs,
-      { label: "New Tab", source: "all" as TabSource, display: "reviewing" as TabDisplay, enabled: true, filter: { max_reviewers: null } },
+      { label: "New Tab", source: "all" as TabSource, display: "reviewing" as TabDisplay, enabled: true, filter: { max_reviewers: null, hide_drafts: null, branch_prefix: null, cc_type: null } },
     ]);
   };
 
@@ -192,90 +192,82 @@ export function SettingsPage({ onDone }: SettingsPageProps) {
         </CardHeader>
         <CardContent className="space-y-3">
           {config.general.tabs.map((tab, i) => (
-            <div key={i} className="rounded-md border p-3 space-y-3">
-              <div className="flex items-center justify-between gap-2">
+            <div key={i} className={`rounded-md border p-3 space-y-2.5 ${!tab.enabled ? "opacity-50" : ""}`}>
+              <div className="flex items-center gap-2">
+                <button
+                  role="switch"
+                  aria-checked={tab.enabled}
+                  onClick={() => handleUpdateTab(i, { enabled: !tab.enabled })}
+                  className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors ${tab.enabled ? "bg-primary" : "bg-input"}`}
+                >
+                  <span className={`inline-block h-3 w-3 rounded-full bg-background shadow-sm transition-transform ${tab.enabled ? "translate-x-3.5" : "translate-x-0.5"}`} />
+                </button>
                 <Input
-                  className="h-8 flex-1"
+                  className="h-7 flex-1 text-sm"
                   value={tab.label}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                     handleUpdateTab(i, { label: e.target.value })
                   }
                 />
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    disabled={i === 0}
-                    onClick={() => handleMoveTab(i, -1)}
-                  >
-                    <ArrowUp className="h-3.5 w-3.5" />
+                <div className="flex items-center">
+                  <Button variant="ghost" size="icon" className="h-7 w-7" disabled={i === 0} onClick={() => handleMoveTab(i, -1)}>
+                    <ArrowUp className="h-3 w-3" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-7 w-7" disabled={i === config.general.tabs.length - 1} onClick={() => handleMoveTab(i, 1)}>
+                    <ArrowDown className="h-3 w-3" />
                   </Button>
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8"
-                    disabled={i === config.general.tabs.length - 1}
-                    onClick={() => handleMoveTab(i, 1)}
-                  >
-                    <ArrowDown className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-destructive"
+                    className="h-7 w-7 text-destructive"
                     disabled={config.general.tabs.filter((t) => t.enabled).length <= 1 && tab.enabled}
                     onClick={() => handleDeleteTab(i)}
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <Trash2 className="h-3 w-3" />
                   </Button>
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-3 text-xs">
-                <NotificationToggle
-                  label="Enabled"
-                  description=""
-                  checked={tab.enabled}
-                  onChange={(v) => handleUpdateTab(i, { enabled: v })}
-                />
-
-                <div className="flex items-center gap-1.5">
-                  <span className="text-muted-foreground">Source:</span>
-                  <div className="flex gap-0.5">
-                    {(["reviewing", "authored", "all"] as TabSource[]).map((s) => (
-                      <Button
-                        key={s}
-                        size="sm"
-                        variant={tab.source === s ? "default" : "outline"}
-                        className="h-6 px-2 text-xs capitalize"
-                        onClick={() => handleUpdateTab(i, { source: s })}
-                      >
-                        {s}
-                      </Button>
-                    ))}
-                  </div>
+              <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-xs items-center pl-9">
+                <span className="text-muted-foreground">Source</span>
+                <div className="flex gap-0.5">
+                  {(["reviewing", "authored", "all"] as TabSource[]).map((s) => (
+                    <Button key={s} size="sm" variant={tab.source === s ? "default" : "outline"} className="h-6 px-2 text-xs capitalize" onClick={() => handleUpdateTab(i, { source: s })}>
+                      {s}
+                    </Button>
+                  ))}
                 </div>
 
-                <div className="flex items-center gap-1.5">
-                  <span className="text-muted-foreground">Display:</span>
-                  <div className="flex gap-0.5">
-                    {(["reviewing", "authored"] as TabDisplay[]).map((d) => (
-                      <Button
-                        key={d}
-                        size="sm"
-                        variant={tab.display === d ? "default" : "outline"}
-                        className="h-6 px-2 text-xs capitalize"
-                        onClick={() => handleUpdateTab(i, { display: d })}
-                      >
-                        {d}
-                      </Button>
-                    ))}
-                  </div>
+                <span className="text-muted-foreground">Display</span>
+                <div className="flex gap-0.5">
+                  {(["reviewing", "authored"] as TabDisplay[]).map((d) => (
+                    <Button key={d} size="sm" variant={tab.display === d ? "default" : "outline"} className="h-6 px-2 text-xs capitalize" onClick={() => handleUpdateTab(i, { display: d })}>
+                      {d}
+                    </Button>
+                  ))}
                 </div>
 
-                <div className="flex items-center gap-1.5">
-                  <span className="text-muted-foreground">Max reviewers:</span>
+                <span className="text-muted-foreground">Drafts</span>
+                <div className="flex gap-0.5">
+                  {([
+                    { value: null, label: "Default" },
+                    { value: true, label: "Hide" },
+                    { value: false, label: "Show" },
+                  ] as const).map((opt) => (
+                    <Button
+                      key={String(opt.value)}
+                      size="sm"
+                      variant={tab.filter.hide_drafts === opt.value ? "default" : "outline"}
+                      className="h-6 px-2 text-xs"
+                      onClick={() => handleUpdateTab(i, { filter: { ...tab.filter, hide_drafts: opt.value } })}
+                    >
+                      {opt.label}
+                    </Button>
+                  ))}
+                </div>
+
+                <span className="text-muted-foreground">Max reviewers</span>
+                <div>
                   <Input
                     type="number"
                     className="h-6 w-16 text-xs"
@@ -291,6 +283,40 @@ export function SettingsPage({ onDone }: SettingsPageProps) {
                       })
                     }
                   />
+                </div>
+
+                <span className="text-muted-foreground">Branch prefix</span>
+                <div>
+                  <Input
+                    className="h-6 w-32 text-xs"
+                    placeholder="e.g. fix/"
+                    value={tab.filter.branch_prefix ?? ""}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                      handleUpdateTab(i, {
+                        filter: {
+                          ...tab.filter,
+                          branch_prefix: e.target.value || null,
+                        },
+                      })
+                    }
+                  />
+                </div>
+
+                <span className="text-muted-foreground">Commit type</span>
+                <div className="flex flex-wrap gap-0.5">
+                  {["feat", "fix", "refactor", "perf", "docs", "test", "chore"].map((t) => (
+                    <Button
+                      key={t}
+                      size="sm"
+                      variant={tab.filter.cc_type === t ? "default" : "outline"}
+                      className="h-6 px-2 text-xs"
+                      onClick={() => handleUpdateTab(i, {
+                        filter: { ...tab.filter, cc_type: tab.filter.cc_type === t ? null : t },
+                      })}
+                    >
+                      {t}
+                    </Button>
+                  ))}
                 </div>
               </div>
             </div>

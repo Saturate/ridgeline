@@ -19,6 +19,7 @@ import { PrList } from "@/components/pr/pr-list";
 import { PrDetailPanel } from "@/components/pr/pr-detail-panel";
 import { useConfig } from "@/lib/hooks/use-config";
 import { getProviderColorMap } from "@/lib/provider-colors";
+import { parseConventionalCommit } from "@/lib/conventional-commit";
 import type { PrId, PollError, PollErrorKind, PullRequest, TabConfig, TabSource } from "@/lib/types";
 
 interface DashboardProps {
@@ -96,9 +97,10 @@ export function Dashboard({ initialized, initError, onRetry }: DashboardProps) {
     (data?.authored ?? []).map((pr) => prIdKey(pr.id)),
   );
 
+  const emptyFilter = { max_reviewers: null, hide_drafts: null, branch_prefix: null, cc_type: null };
   const defaultTabs: TabConfig[] = [
-    { label: "Reviewing", source: "reviewing", display: "reviewing", enabled: true, filter: { max_reviewers: null } },
-    { label: "Authored", source: "authored", display: "authored", enabled: true, filter: { max_reviewers: null } },
+    { label: "Reviewing", source: "reviewing", display: "reviewing", enabled: true, filter: emptyFilter },
+    { label: "Authored", source: "authored", display: "authored", enabled: true, filter: emptyFilter },
   ];
   const tabs = (config?.general.tabs?.filter((t) => t.enabled) ?? []).length > 0
     ? config!.general.tabs.filter((t) => t.enabled)
@@ -127,8 +129,19 @@ export function Dashboard({ initialized, initError, onRetry }: DashboardProps) {
 
   const applyTabFilter = (prs: PullRequest[], tab: TabConfig): PullRequest[] => {
     let filtered = prs;
-    if (tab.filter.max_reviewers !== null && tab.filter.max_reviewers !== undefined) {
+    if (tab.filter.max_reviewers != null) {
       filtered = filtered.filter((pr) => pr.reviewers.length <= tab.filter.max_reviewers!);
+    }
+    if (tab.filter.branch_prefix) {
+      const prefix = tab.filter.branch_prefix.toLowerCase();
+      filtered = filtered.filter((pr) => pr.sourceBranch.toLowerCase().startsWith(prefix));
+    }
+    if (tab.filter.cc_type) {
+      const ccType = tab.filter.cc_type.toLowerCase();
+      filtered = filtered.filter((pr) => {
+        const cc = parseConventionalCommit(pr.title);
+        return cc !== null && cc.type.toLowerCase() === ccType;
+      });
     }
     return filtered;
   };
@@ -136,7 +149,8 @@ export function Dashboard({ initialized, initError, onRetry }: DashboardProps) {
   const tabData = tabs.map((tab, i) => {
     const sourcePrs = getPrsForSource(tab.source);
     const tabFiltered = applyTabFilter(sourcePrs, tab);
-    const prs = filterPrs(tabFiltered, search, hideDrafts, activeProviders);
+    const effectiveHideDrafts = tab.filter.hide_drafts ?? hideDrafts;
+    const prs = filterPrs(tabFiltered, search, effectiveHideDrafts, activeProviders);
     return { tab, prs, key: `${tab.label}-${i}` };
   });
 

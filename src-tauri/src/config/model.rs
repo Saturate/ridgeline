@@ -132,6 +132,8 @@ fn default_tabs() -> Vec<TabConfig> {
             enabled: false,
             filter: TabFilter {
                 max_reviewers: Some(0),
+                hide_drafts: Some(true),
+                ..TabFilter::default()
             },
         },
     ]
@@ -181,6 +183,12 @@ impl Default for TabDisplay {
 pub struct TabFilter {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_reviewers: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hide_drafts: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch_prefix: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cc_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

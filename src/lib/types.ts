@@ -138,6 +138,9 @@ export interface TabConfig {
 
 export interface TabFilter {
   max_reviewers: number | null;
+  hide_drafts: boolean | null;
+  branch_prefix: string | null;
+  cc_type: string | null;
 }
 
 export interface NotificationConfig {
