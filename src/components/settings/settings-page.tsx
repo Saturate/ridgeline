@@ -2,6 +2,14 @@ import { useState } from "react";
 import { Bell, Check, Clipboard, ExternalLink, Plus, Trash2, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
@@ -93,8 +101,17 @@ export function SettingsPage({ onDone }: SettingsPageProps) {
     handleSaveTabs(tabs);
   };
 
+  const [confirmDeleteTab, setConfirmDeleteTab] = useState<number | null>(null);
+
   const handleDeleteTab = (index: number) => {
-    handleSaveTabs(config.general.tabs.filter((_, i) => i !== index));
+    setConfirmDeleteTab(index);
+  };
+
+  const confirmDelete = () => {
+    if (confirmDeleteTab !== null) {
+      handleSaveTabs(config.general.tabs.filter((_, i) => i !== confirmDeleteTab));
+      setConfirmDeleteTab(null);
+    }
   };
 
   const handleMoveTab = (index: number, direction: -1 | 1) => {
@@ -260,6 +277,21 @@ export function SettingsPage({ onDone }: SettingsPageProps) {
         onSave={(t) => handleSaveTab(t, null)}
         onClose={() => setAddingTab(false)}
       />
+
+      <Dialog open={confirmDeleteTab !== null} onOpenChange={(open) => { if (!open) setConfirmDeleteTab(null); }}>
+        <DialogContent className="sm:max-w-[360px]">
+          <DialogHeader>
+            <DialogTitle>Delete tab</DialogTitle>
+            <DialogDescription>
+              Delete "{confirmDeleteTab !== null ? config.general.tabs[confirmDeleteTab]?.label : ""}"? This can't be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" size="sm" onClick={() => setConfirmDeleteTab(null)}>Cancel</Button>
+            <Button variant="destructive" size="sm" onClick={confirmDelete}>Delete</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Card>
         <CardHeader className="pb-2">
