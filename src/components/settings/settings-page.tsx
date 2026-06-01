@@ -126,7 +126,7 @@ export function SettingsPage({ onDone }: SettingsPageProps) {
   };
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6 p-6">
+    <div className="h-full overflow-y-auto"><div className="mx-auto max-w-2xl space-y-6 p-6">
       {isFirstRun && (
         <div className="text-center">
           <h2 className="text-xl font-semibold">Welcome to Ridgeline</h2>
@@ -532,7 +532,7 @@ export function SettingsPage({ onDone }: SettingsPageProps) {
           <Button onClick={onDone}>Done</Button>
         </div>
       )}
-    </div>
+    </div></div>
   );
 }
 
