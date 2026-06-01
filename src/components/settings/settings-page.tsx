@@ -10,7 +10,7 @@ import { api } from "@/lib/api";
 import { ProviderForm } from "./provider-form";
 import { getProviderColorMap } from "@/lib/provider-colors";
 import { ArrowUp, ArrowDown } from "lucide-react";
-import { TabForm } from "./tab-form";
+import { TabFormSheet } from "./tab-form";
 import type { Config, NotificationConfig, ProviderConfig, ProviderIndicator, TabConfig } from "@/lib/types";
 
 interface SettingsPageProps {
@@ -193,77 +193,73 @@ export function SettingsPage({ onDone }: SettingsPageProps) {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle className="text-base">Tabs</CardTitle>
-          {!addingTab && editingTabIndex === null && (
-            <Button size="sm" variant="outline" onClick={() => setAddingTab(true)}>
-              <Plus className="mr-1 h-4 w-4" />
-              Add Tab
-            </Button>
-          )}
+          <Button size="sm" variant="outline" onClick={() => { setEditingTabIndex(null); setAddingTab(true); }}>
+            <Plus className="mr-1 h-4 w-4" />
+            Add Tab
+          </Button>
         </CardHeader>
         <CardContent className="space-y-3">
-          {config.general.tabs.map((tab, i) =>
-            editingTabIndex === i ? (
-              <TabForm
-                key={i}
-                initial={tab}
-                onSave={(t) => handleSaveTab(t, i)}
-                onCancel={() => setEditingTabIndex(null)}
-              />
-            ) : (
-              <div
-                key={i}
-                className={`flex items-center justify-between rounded-md border p-3 ${!tab.enabled ? "opacity-50" : ""}`}
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <button
-                    role="switch"
-                    aria-checked={tab.enabled}
-                    onClick={() => handleUpdateTab(i, { enabled: !tab.enabled })}
-                    className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors ${tab.enabled ? "bg-primary" : "bg-input"}`}
-                  >
-                    <span className={`inline-block h-3 w-3 rounded-full bg-background shadow-sm transition-transform ${tab.enabled ? "translate-x-3.5" : "translate-x-0.5"}`} />
-                  </button>
-                  <div className="min-w-0">
-                    <span className="text-sm font-medium">{tab.label}</span>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {tabSummary(tab)}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-1">
-                  <Button variant="ghost" size="icon" className="h-8 w-8" disabled={i === 0} onClick={() => handleMoveTab(i, -1)}>
-                    <ArrowUp className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button variant="ghost" size="icon" className="h-8 w-8" disabled={i === config.general.tabs.length - 1} onClick={() => handleMoveTab(i, 1)}>
-                    <ArrowDown className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingTabIndex(i)}>
-                    <Pencil className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-destructive"
-                    disabled={config.general.tabs.filter((t) => t.enabled).length <= 1 && tab.enabled}
-                    onClick={() => handleDeleteTab(i)}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
+          {config.general.tabs.map((tab, i) => (
+            <div
+              key={i}
+              className={`flex items-center justify-between rounded-md border p-3 ${!tab.enabled ? "opacity-50" : ""}`}
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <button
+                  role="switch"
+                  aria-checked={tab.enabled}
+                  onClick={() => handleUpdateTab(i, { enabled: !tab.enabled })}
+                  className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors ${tab.enabled ? "bg-primary" : "bg-input"}`}
+                >
+                  <span className={`inline-block h-3 w-3 rounded-full bg-background shadow-sm transition-transform ${tab.enabled ? "translate-x-3.5" : "translate-x-0.5"}`} />
+                </button>
+                <div className="min-w-0">
+                  <span className="text-sm font-medium">{tab.label}</span>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {tabSummary(tab)}
+                  </p>
                 </div>
               </div>
-            ),
-          )}
-          {addingTab && (
-            <TabForm
-              onSave={(t) => handleSaveTab(t, null)}
-              onCancel={() => setAddingTab(false)}
-            />
-          )}
-          {config.general.tabs.length === 0 && !addingTab && (
+              <div className="flex items-center gap-1">
+                <Button variant="ghost" size="icon" className="h-8 w-8" disabled={i === 0} onClick={() => handleMoveTab(i, -1)}>
+                  <ArrowUp className="h-3.5 w-3.5" />
+                </Button>
+                <Button variant="ghost" size="icon" className="h-8 w-8" disabled={i === config.general.tabs.length - 1} onClick={() => handleMoveTab(i, 1)}>
+                  <ArrowDown className="h-3.5 w-3.5" />
+                </Button>
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setAddingTab(false); setEditingTabIndex(i); }}>
+                  <Pencil className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-destructive"
+                  disabled={config.general.tabs.filter((t) => t.enabled).length <= 1 && tab.enabled}
+                  onClick={() => handleDeleteTab(i)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </div>
+          ))}
+          {config.general.tabs.length === 0 && (
             <p className="text-sm text-muted-foreground py-2">No tabs configured. Click "Add Tab" to create one.</p>
           )}
         </CardContent>
       </Card>
+
+      <TabFormSheet
+        open={editingTabIndex !== null}
+        initial={editingTabIndex !== null ? config.general.tabs[editingTabIndex] : undefined}
+        onSave={(t) => handleSaveTab(t, editingTabIndex)}
+        onClose={() => setEditingTabIndex(null)}
+      />
+
+      <TabFormSheet
+        open={addingTab}
+        onSave={(t) => handleSaveTab(t, null)}
+        onClose={() => setAddingTab(false)}
+      />
 
       <Card>
         <CardHeader className="pb-2">
