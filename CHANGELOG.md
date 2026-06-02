@@ -1,6 +1,15 @@
 # Changelog
 
-## [0.6.0] - 2026-05-29
+## [0.7.0] - 2026-06-02
+
+
+### Features
+
+- Configurable custom tabs with filters (#8)
+
+### Bug Fixes
+
+- Distinguish abandoned from completed PR notifications (#9)## [0.6.0] - 2026-05-29
 
 
 ### Features
