@@ -4,13 +4,15 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::providers::types::{PrId, PullRequest, Vote};
+use crate::providers::types::{PrId, PrStatus, PullRequest, Vote};
 
 #[derive(Clone, Serialize, Deserialize)]
 struct PrMeta {
     title: String,
     repo: String,
     web_url: String,
+    #[serde(default)]
+    pr_id: Option<PrId>,
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -68,18 +70,26 @@ impl ChangeTracker {
 
         let current_keys: HashSet<String> = prs.iter().map(|pr| pr_key(&pr.id)).collect();
 
-        // Detect completed PRs (were known, now gone)
+        // Detect disappeared PRs (were known, now gone)
         for key in &self.known_prs {
             if !current_keys.contains(key) {
-                if let Some(meta) = self.pr_meta.get(key) {
-                    changes.push(Change::Completed {
-                        title: meta.title.clone(),
-                        repo: meta.repo.clone(),
-                        web_url: meta.web_url.clone(),
-                    });
+                if let Some(meta) = self.pr_meta.remove(key) {
+                    if let Some(pr_id) = meta.pr_id.clone() {
+                        changes.push(Change::Disappeared {
+                            title: meta.title.clone(),
+                            repo: meta.repo.clone(),
+                            web_url: meta.web_url.clone(),
+                            pr_id,
+                        });
+                    } else {
+                        changes.push(Change::Completed {
+                            title: meta.title.clone(),
+                            repo: meta.repo.clone(),
+                            web_url: meta.web_url.clone(),
+                        });
+                    }
                 }
                 self.vote_states.remove(key);
-                self.pr_meta.remove(key);
             }
         }
 
@@ -100,6 +110,7 @@ impl ChangeTracker {
                     title: pr.title.clone(),
                     repo: format!("{}/{}", pr.repository.project, pr.repository.name),
                     web_url: pr.web_url.clone(),
+                    pr_id: Some(pr.id.clone()),
                 },
             );
 
@@ -218,14 +229,46 @@ pub enum Change {
         repo: String,
         web_url: String,
     },
+    #[serde(rename = "abandoned")]
+    Abandoned {
+        title: String,
+        repo: String,
+        web_url: String,
+    },
+    #[serde(skip)]
+    Disappeared {
+        title: String,
+        repo: String,
+        web_url: String,
+        pr_id: PrId,
+    },
 }
 
 impl Change {
+    pub fn pr_id(&self) -> Option<&PrId> {
+        match self {
+            Change::Disappeared { pr_id, .. } => Some(pr_id),
+            _ => None,
+        }
+    }
+
+    pub fn resolve_disappeared(self, status: PrStatus) -> Self {
+        match self {
+            Change::Disappeared { title, repo, web_url, .. } => match status {
+                PrStatus::Abandoned => Change::Abandoned { title, repo, web_url },
+                _ => Change::Completed { title, repo, web_url },
+            },
+            other => other,
+        }
+    }
+
     pub fn web_url(&self) -> &str {
         match self {
             Change::NewPr { web_url, .. }
             | Change::VoteChanged { web_url, .. }
-            | Change::Completed { web_url, .. } => web_url,
+            | Change::Completed { web_url, .. }
+            | Change::Abandoned { web_url, .. }
+            | Change::Disappeared { web_url, .. } => web_url,
         }
     }
 
@@ -234,6 +277,8 @@ impl Change {
             Change::NewPr { .. } => "New Pull Request".to_string(),
             Change::VoteChanged { .. } => "Vote Changed".to_string(),
             Change::Completed { .. } => "PR Completed".to_string(),
+            Change::Abandoned { .. } => "PR Abandoned".to_string(),
+            Change::Disappeared { .. } => "PR Closed".to_string(),
         }
     }
 
@@ -260,6 +305,12 @@ impl Change {
             }
             Change::Completed { title, repo, .. } => {
                 format!("\"{title}\" in {repo} was completed")
+            }
+            Change::Abandoned { title, repo, .. } => {
+                format!("\"{title}\" in {repo} was abandoned")
+            }
+            Change::Disappeared { title, repo, .. } => {
+                format!("\"{title}\" in {repo} was closed")
             }
         }
     }
