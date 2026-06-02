@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Ridgeline
+Comment=Cross-tenant pull request monitor for Azure DevOps
+Icon=io.github.saturate.Ridgeline
+Exec=ridgeline
+Terminal=false
+Categories=Development;Utility;
+Keywords=Azure;DevOps;Pull Request;PR;Monitor;
+X-GNOME-UsesNotifications=true
