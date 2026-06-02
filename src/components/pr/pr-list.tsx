@@ -1,8 +1,8 @@
 import { Inbox } from "lucide-react";
 import { PrRow } from "./pr-row";
-import type { PrId, PullRequest, ProviderIndicator } from "@/lib/types";
+import type { PrId, PullRequest, ProviderIndicator, TabDisplay } from "@/lib/types";
 
-export type PrListVariant = "reviewing" | "authored";
+export type PrListVariant = TabDisplay;
 
 interface PrListProps {
   prs: PullRequest[];

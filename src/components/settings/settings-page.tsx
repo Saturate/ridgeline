@@ -2,6 +2,14 @@ import { useState } from "react";
 import { Bell, Check, Clipboard, ExternalLink, Plus, Trash2, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
@@ -9,7 +17,9 @@ import { useConfig, useSaveConfig } from "@/lib/hooks/use-config";
 import { api } from "@/lib/api";
 import { ProviderForm } from "./provider-form";
 import { getProviderColorMap } from "@/lib/provider-colors";
-import type { Config, NotificationConfig, ProviderConfig, ProviderIndicator } from "@/lib/types";
+import { ArrowUp, ArrowDown } from "lucide-react";
+import { TabFormSheet } from "./tab-form";
+import type { Config, NotificationConfig, ProviderConfig, ProviderIndicator, TabConfig } from "@/lib/types";
 
 interface SettingsPageProps {
   onDone: () => void;
@@ -20,6 +30,8 @@ export function SettingsPage({ onDone }: SettingsPageProps) {
   const saveConfig = useSaveConfig();
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
+  const [editingTabIndex, setEditingTabIndex] = useState<number | null>(null);
+  const [addingTab, setAddingTab] = useState(false);
 
   if (isLoading || !config) return null;
 
@@ -63,8 +75,58 @@ export function SettingsPage({ onDone }: SettingsPageProps) {
     });
   };
 
+  const handleSaveTabs = (tabs: TabConfig[]) => {
+    saveConfig.mutate({
+      ...config,
+      general: { ...config.general, tabs },
+    });
+  };
+
+  const handleSaveTab = (tab: TabConfig, index: number | null) => {
+    const tabs = [...config.general.tabs];
+    if (index !== null) {
+      tabs[index] = tab;
+    } else {
+      tabs.push(tab);
+    }
+    handleSaveTabs(tabs);
+    setEditingTabIndex(null);
+    setAddingTab(false);
+  };
+
+  const handleUpdateTab = (index: number, updates: Partial<TabConfig>) => {
+    const tabs = config.general.tabs.map((t, i) =>
+      i === index ? { ...t, ...updates } : t,
+    );
+    handleSaveTabs(tabs);
+  };
+
+  const [confirmDeleteTab, setConfirmDeleteTab] = useState<number | null>(null);
+
+  const handleDeleteTab = (index: number) => {
+    setConfirmDeleteTab(index);
+  };
+
+  const confirmDelete = () => {
+    if (confirmDeleteTab !== null) {
+      handleSaveTabs(config.general.tabs.filter((_, i) => i !== confirmDeleteTab));
+      setConfirmDeleteTab(null);
+    }
+  };
+
+  const handleMoveTab = (index: number, direction: -1 | 1) => {
+    const tabs = [...config.general.tabs];
+    const target = index + direction;
+    const a = tabs[index];
+    const b = tabs[target];
+    if (!a || !b) return;
+    tabs[index] = b;
+    tabs[target] = a;
+    handleSaveTabs(tabs);
+  };
+
   return (
-    <div className="mx-auto max-w-2xl space-y-6 p-6">
+    <div className="h-full overflow-y-auto"><div className="mx-auto max-w-2xl space-y-6 p-6">
       {isFirstRun && (
         <div className="text-center">
           <h2 className="text-xl font-semibold">Welcome to Ridgeline</h2>
@@ -144,6 +206,92 @@ export function SettingsPage({ onDone }: SettingsPageProps) {
           )}
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <CardTitle className="text-base">Tabs</CardTitle>
+          <Button size="sm" variant="outline" onClick={() => { setEditingTabIndex(null); setAddingTab(true); }}>
+            <Plus className="mr-1 h-4 w-4" />
+            Add Tab
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {config.general.tabs.map((tab, i) => (
+            <div
+              key={i}
+              className={`flex items-center justify-between rounded-md border p-3 ${!tab.enabled ? "opacity-50" : ""}`}
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <button
+                  role="switch"
+                  aria-checked={tab.enabled}
+                  onClick={() => handleUpdateTab(i, { enabled: !tab.enabled })}
+                  className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors ${tab.enabled ? "bg-primary" : "bg-input"}`}
+                >
+                  <span className={`inline-block h-3 w-3 rounded-full bg-background shadow-sm transition-transform ${tab.enabled ? "translate-x-3.5" : "translate-x-0.5"}`} />
+                </button>
+                <div className="min-w-0">
+                  <span className="text-sm font-medium">{tab.label}</span>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {tabSummary(tab)}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1">
+                <Button variant="ghost" size="icon" className="h-8 w-8" disabled={i === 0} onClick={() => handleMoveTab(i, -1)}>
+                  <ArrowUp className="h-3.5 w-3.5" />
+                </Button>
+                <Button variant="ghost" size="icon" className="h-8 w-8" disabled={i === config.general.tabs.length - 1} onClick={() => handleMoveTab(i, 1)}>
+                  <ArrowDown className="h-3.5 w-3.5" />
+                </Button>
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setAddingTab(false); setEditingTabIndex(i); }}>
+                  <Pencil className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-destructive"
+                  disabled={config.general.tabs.filter((t) => t.enabled).length <= 1 && tab.enabled}
+                  onClick={() => handleDeleteTab(i)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </div>
+          ))}
+          {config.general.tabs.length === 0 && (
+            <p className="text-sm text-muted-foreground py-2">No tabs configured. Click "Add Tab" to create one.</p>
+          )}
+        </CardContent>
+      </Card>
+
+      <TabFormSheet
+        open={editingTabIndex !== null}
+        initial={editingTabIndex !== null ? config.general.tabs[editingTabIndex] : undefined}
+        onSave={(t) => handleSaveTab(t, editingTabIndex)}
+        onClose={() => setEditingTabIndex(null)}
+      />
+
+      <TabFormSheet
+        open={addingTab}
+        onSave={(t) => handleSaveTab(t, null)}
+        onClose={() => setAddingTab(false)}
+      />
+
+      <Dialog open={confirmDeleteTab !== null} onOpenChange={(open) => { if (!open) setConfirmDeleteTab(null); }}>
+        <DialogContent className="sm:max-w-[360px]">
+          <DialogHeader>
+            <DialogTitle>Delete tab</DialogTitle>
+            <DialogDescription>
+              Delete "{confirmDeleteTab !== null ? config.general.tabs[confirmDeleteTab]?.label : ""}"? This can't be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" size="sm" onClick={() => setConfirmDeleteTab(null)}>Cancel</Button>
+            <Button variant="destructive" size="sm" onClick={confirmDelete}>Delete</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Card>
         <CardHeader className="pb-2">
@@ -384,7 +532,7 @@ export function SettingsPage({ onDone }: SettingsPageProps) {
           <Button onClick={onDone}>Done</Button>
         </div>
       )}
-    </div>
+    </div></div>
   );
 }
 
@@ -417,6 +565,19 @@ function NotificationToggle({
       </button>
     </label>
   );
+}
+
+const SOURCE_LABELS: Record<string, string> = { reviewing: "Reviewing", authored: "My PRs", all: "Everything" };
+const DISPLAY_LABELS: Record<string, string> = { reviewing: "Votes", authored: "Status" };
+
+function tabSummary(tab: TabConfig): string {
+  const parts = [SOURCE_LABELS[tab.source] ?? tab.source, DISPLAY_LABELS[tab.display] ?? tab.display];
+  if (tab.filter.drafts) parts.push(`drafts: ${tab.filter.drafts}`);
+  if (tab.filter.max_reviewers != null) parts.push(`max ${tab.filter.max_reviewers} reviewers`);
+  if (tab.filter.branch_prefix) parts.push(tab.filter.branch_prefix + "*");
+  const types = tab.filter.cc_types ?? [];
+  if (types.length > 0) parts.push(types.join(", "));
+  return parts.join(" · ");
 }
 
 function CopyBlock({ text, label }: { text: string; label?: string }) {

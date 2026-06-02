@@ -119,7 +119,7 @@ export function AppLayout() {
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto">
+      <main className="flex-1 overflow-hidden">
         {view === "settings" || needsSetup ? (
           <SettingsPage
             onDone={() => {
