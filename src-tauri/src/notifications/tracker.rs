@@ -252,13 +252,14 @@ impl Change {
         }
     }
 
-    pub fn resolve_disappeared(self, status: PrStatus) -> Self {
+    pub fn resolve_disappeared(self, status: PrStatus) -> Option<Self> {
         match self {
             Change::Disappeared { title, repo, web_url, .. } => match status {
-                PrStatus::Abandoned => Change::Abandoned { title, repo, web_url },
-                _ => Change::Completed { title, repo, web_url },
+                PrStatus::Abandoned => Some(Change::Abandoned { title, repo, web_url }),
+                PrStatus::Completed => Some(Change::Completed { title, repo, web_url }),
+                PrStatus::Active => None,
             },
-            other => other,
+            other => Some(other),
         }
     }
 

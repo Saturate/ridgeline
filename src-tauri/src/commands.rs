@@ -185,11 +185,13 @@ pub async fn start_polling(app: AppHandle, state: State<'_, AppState>) -> Result
                             let provider = providers.iter().find(|(p, _)| p.name() == pr_id.provider);
                             if let Some((provider, _)) = provider {
                                 if let Ok(detail) = provider.get_detail(pr_id).await {
-                                    resolved.push(change.resolve_disappeared(detail.pr.status));
+                                    if let Some(resolved_change) = change.resolve_disappeared(detail.pr.status) {
+                                        resolved.push(resolved_change);
+                                    }
                                     continue;
                                 }
                             }
-                            resolved.push(change.resolve_disappeared(crate::providers::types::PrStatus::Completed));
+                            // Provider missing or fetch failed - skip notification
                         } else {
                             resolved.push(change);
                         }
