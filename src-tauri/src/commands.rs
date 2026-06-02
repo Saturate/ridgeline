@@ -178,12 +178,31 @@ pub async fn start_polling(app: AppHandle, state: State<'_, AppState>) -> Result
                 let changes = tracker.detect_changes(&all_prs);
 
                 if !first_poll {
+                    let providers = state.providers().read().await;
+                    let mut resolved = Vec::with_capacity(changes.len());
+                    for change in changes {
+                        if let Some(pr_id) = change.pr_id() {
+                            let provider = providers.iter().find(|(p, _)| p.name() == pr_id.provider);
+                            if let Some((provider, _)) = provider {
+                                if let Ok(detail) = provider.get_detail(pr_id).await {
+                                    if let Some(resolved_change) = change.resolve_disappeared(detail.pr.status) {
+                                        resolved.push(resolved_change);
+                                    }
+                                    continue;
+                                }
+                            }
+                            // Provider missing or fetch failed - skip notification
+                        } else {
+                            resolved.push(change);
+                        }
+                    }
+
                     let notif_config = {
                         let config = state.config().read().await;
                         (config.general.notifications_enabled, config.general.notifications.clone())
                     };
 
-                    for change in &changes {
+                    for change in &resolved {
                         let _ = handle.emit("pr-change", change);
 
                         if notif_config.0 && should_notify(change, &notif_config.1) {
@@ -309,7 +328,8 @@ fn should_notify(change: &Change, config: &NotificationConfig) -> bool {
                 config.vote_changed
             }
         }
-        Change::Completed { .. } => config.completed,
+        Change::Completed { .. } | Change::Abandoned { .. } => config.completed,
+        Change::Disappeared { .. } => false,
     }
 }
 

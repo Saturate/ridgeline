@@ -177,4 +177,5 @@ export type Change =
       reviewer: string;
       newVote: Vote;
     }
-  | { type: "completed"; title: string; repo: string };
+  | { type: "completed"; title: string; repo: string }
+  | { type: "abandoned"; title: string; repo: string };
