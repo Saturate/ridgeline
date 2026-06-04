@@ -73,6 +73,7 @@ jobs:
       - name: Extract changelog
         if: startsWith(github.ref, 'refs/tags/')
         id: changelog
+        shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           BODY=$(sed -n "/^## \[${VERSION}\]/,/^## \[/{/^## \[${VERSION}\]/d;/^## \[/d;p;}" CHANGELOG.md)
