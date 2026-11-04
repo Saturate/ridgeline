@@ -1,3 +1,4 @@
+pub mod auth;
 pub mod config;
 pub mod mcp;
 pub mod notifications;
@@ -7,7 +8,7 @@ pub mod util;
 
 use std::sync::Arc;
 
-use config::model::{NotificationConfig, ProviderConfig};
+use config::model::{AuthMethod, NotificationConfig, ProviderConfig};
 use notifications::tracker::Change;
 use providers::azure_devops::AzureDevOpsProvider;
 use providers::traits::PrProvider;
@@ -22,12 +23,29 @@ pub async fn init_providers(
         .map(|provider_config| async {
             match provider_config {
                 ProviderConfig::AzureDevOps(ado_config) => {
-                    let pat = config::credentials::get_token(&ado_config.name)
-                        .map_err(|e| {
-                            eprintln!("skipping provider {}: {}", ado_config.name, e);
-                        })
-                        .ok()?;
-                    let provider = AzureDevOpsProvider::new(ado_config, &pat);
+                    let provider = match ado_config.auth {
+                        AuthMethod::Pat => {
+                            let pat = config::credentials::get_token(&ado_config.name)
+                                .map_err(|e| {
+                                    eprintln!("skipping provider {}: {}", ado_config.name, e);
+                                })
+                                .ok()?;
+                            AzureDevOpsProvider::new(ado_config, &pat)
+                        }
+                        AuthMethod::AzureCli => {
+                            let credential = Arc::new(auth::AzureCliCredential);
+                            AzureDevOpsProvider::with_credential(ado_config, credential)
+                        }
+                        AuthMethod::DeviceCode => {
+                            // Device code needs an interactive flow first;
+                            // if no cached token exists, skip with a message.
+                            eprintln!(
+                                "provider {}: device-code auth requires browser sign-in from settings",
+                                ado_config.name
+                            );
+                            return None;
+                        }
+                    };
                     let user = provider
                         .get_current_user()
                         .await
@@ -35,7 +53,8 @@ pub async fn init_providers(
                             eprintln!("skipping provider {}: {}", ado_config.name, e);
                         })
                         .ok()?;
-                    let name = format!("{} ({})", ado_config.name, user.display_name);
+                    let auth_label = provider.credential_type();
+                    let name = format!("{} ({}, {})", ado_config.name, user.display_name, auth_label);
                     Some((Arc::new(provider) as Arc<dyn PrProvider>, user, name))
                 }
             }

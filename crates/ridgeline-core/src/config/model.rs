@@ -213,7 +213,18 @@ pub struct AzureDevOpsConfig {
     #[serde(default)]
     pub color: Option<String>,
     #[serde(default)]
+    pub auth: AuthMethod,
+    #[serde(default)]
     pub projects: Vec<ProjectFilter>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AuthMethod {
+    #[default]
+    Pat,
+    AzureCli,
+    DeviceCode,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -14,7 +14,7 @@ use gpui_kit::component::{
 };
 use gpui_kit::*;
 
-use ridgeline_core::config::model::{AzureDevOpsConfig, Config, ProviderConfig};
+use ridgeline_core::config::model::{AuthMethod, AzureDevOpsConfig, Config, ProviderConfig};
 use ridgeline_core::config::{credentials, loader};
 use ridgeline_core::providers::azure_devops::AzureDevOpsProvider;
 use ridgeline_core::providers::traits::PrProvider;
@@ -186,6 +186,7 @@ impl SettingsWindow {
                                     name: name.clone(),
                                     url,
                                     color: None,
+                                    auth: Default::default(),
                                     projects: Vec::new(),
                                 },
                             ));
@@ -226,12 +227,20 @@ impl SettingsWindow {
             let has_token = credentials::get_token(&name).is_ok();
             let test_result = results.0.get(&name).cloned();
 
+            let auth_label = match ado.auth {
+                AuthMethod::Pat => "PAT",
+                AuthMethod::AzureCli => "Azure CLI",
+                AuthMethod::DeviceCode => "Browser sign-in",
+            };
+
             let status = if let Some(ref result) = test_result {
                 result.clone()
+            } else if ado.auth == AuthMethod::AzureCli {
+                "Using `az login` session".into()
             } else if has_token {
                 "Token stored".into()
             } else {
-                "No token".into()
+                "No credentials".into()
             };
 
             groups.push(
@@ -250,6 +259,44 @@ impl SettingsWindow {
                                 }
                             }),
                         ),
+                        SettingItem::new(
+                            "Auth",
+                            SettingField::dropdown(
+                                vec![
+                                    (SharedString::from("pat"), SharedString::from("Personal Access Token")),
+                                    (SharedString::from("azure-cli"), SharedString::from("Azure CLI (az login)")),
+                                    (SharedString::from("device-code"), SharedString::from("Browser Sign-in (Entra ID)")),
+                                ],
+                                {
+                                    let auth_label = auth_label.to_string();
+                                    move |_cx| match auth_label.as_str() {
+                                        "PAT" => SharedString::from("Personal Access Token"),
+                                        "Azure CLI" => SharedString::from("Azure CLI (az login)"),
+                                        "Browser sign-in" => SharedString::from("Browser Sign-in (Entra ID)"),
+                                        _ => SharedString::from("Personal Access Token"),
+                                    }
+                                },
+                                {
+                                    let idx = idx;
+                                    move |value, cx| {
+                                        let method = match value.as_ref() {
+                                            "Personal Access Token" => AuthMethod::Pat,
+                                            "Azure CLI (az login)" => AuthMethod::AzureCli,
+                                            "Browser Sign-in (Entra ID)" => AuthMethod::DeviceCode,
+                                            _ => AuthMethod::Pat,
+                                        };
+                                        let config = cx.global_mut::<AppConfig>();
+                                        if let Some(ProviderConfig::AzureDevOps(ado)) =
+                                            config.0.providers.get_mut(idx)
+                                        {
+                                            ado.auth = method;
+                                            let _ = loader::save_config(&config.0);
+                                        }
+                                        cx.refresh_windows();
+                                    }
+                                },
+                            ),
+                        ).description("PAT is simplest; Azure CLI reuses `az login`; Browser opens Entra ID sign-in"),
                         SettingItem::new(
                             "Status",
                             SettingField::render({

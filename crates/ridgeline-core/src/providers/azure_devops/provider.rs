@@ -1,7 +1,10 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
 
 use super::client::AzureDevOpsClient;
 use super::mapper;
+use crate::auth::Credential;
 use crate::config::model::{AzureDevOpsConfig, ProjectFilter};
 use crate::providers::traits::{PrProvider, ProviderError};
 use crate::providers::types::*;
@@ -21,12 +24,27 @@ impl AzureDevOpsProvider {
         }
     }
 
+    pub fn with_credential(
+        config: &AzureDevOpsConfig,
+        credential: Arc<dyn Credential>,
+    ) -> Self {
+        Self {
+            name: config.name.clone(),
+            client: AzureDevOpsClient::with_credential(&config.url, credential),
+            projects: config.projects.clone(),
+        }
+    }
+
     pub fn new_from_params(name: &str, url: &str, pat: &str) -> Self {
         Self {
             name: name.to_string(),
             client: AzureDevOpsClient::new(url, pat),
             projects: Vec::new(),
         }
+    }
+
+    pub fn credential_type(&self) -> &str {
+        self.client.credential().display_name()
     }
 
     pub async fn list_projects(&self) -> Result<Vec<String>, ProviderError> {

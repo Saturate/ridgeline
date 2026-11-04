@@ -1,31 +1,37 @@
+use std::sync::Arc;
 use std::time::Duration;
 
-use base64::Engine;
 use reqwest::Client;
 
+use crate::auth::{Credential, PatCredential};
 use crate::providers::traits::ProviderError;
 
 #[derive(Clone)]
 pub struct AzureDevOpsClient {
     client: Client,
     base_url: String,
-    auth_header: String,
+    credential: Arc<dyn Credential>,
 }
 
 impl AzureDevOpsClient {
     pub fn new(base_url: &str, pat: &str) -> Self {
-        let encoded = base64::engine::general_purpose::STANDARD.encode(format!(":{}", pat));
-        let auth_header = format!("Basic {}", encoded);
+        Self::with_credential(base_url, Arc::new(PatCredential::new(pat)))
+    }
 
+    pub fn with_credential(base_url: &str, credential: Arc<dyn Credential>) -> Self {
         Self {
             client: Client::new(),
             base_url: base_url.trim_end_matches('/').to_string(),
-            auth_header,
+            credential,
         }
     }
 
     pub fn base_url(&self) -> &str {
         &self.base_url
+    }
+
+    pub fn credential(&self) -> &dyn Credential {
+        &*self.credential
     }
 
     pub async fn get<T: serde::de::DeserializeOwned>(
@@ -42,10 +48,12 @@ impl AzureDevOpsClient {
                 tokio::time::sleep(delay).await;
             }
 
+            let auth_header = self.credential.auth_header().await?;
+
             let response = match self
                 .client
                 .get(&url)
-                .header("Authorization", &self.auth_header)
+                .header("Authorization", &auth_header)
                 .header("Accept", "application/json")
                 .send()
                 .await
@@ -64,7 +72,10 @@ impl AzureDevOpsClient {
             {
                 return Err(ProviderError::Auth {
                     provider: self.base_url.clone(),
-                    message: format!("HTTP {status} - check your PAT token"),
+                    message: format!(
+                        "HTTP {status} - check your {} credentials",
+                        self.credential.display_name()
+                    ),
                 });
             }
 
