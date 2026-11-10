@@ -8,6 +8,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # The app token, not GITHUB_TOKEN: pushes made with GITHUB_TOKEN don't
+      # trigger other workflows, and the tag push has to start build.yml.
       - name: Generate app token
         id: app-token
         uses: actions/create-github-app-token@v3
@@ -20,32 +22,27 @@ jobs:
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
 
-      - name: Install git-cliff
-        uses: taiki-e/install-action@v2
+      # The post_bump hook in changesetter.toml runs `cargo update`.
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: saturate/changesetter/actions/install@v1
         with:
-          tool: git-cliff
+          version: "0.5.2"
 
-      - name: Determine next version
-        id: bump
-        run: |
-          VERSION=$(git-cliff --bumped-version)
-          echo "version=${VERSION#v}" >> "$GITHUB_OUTPUT"
-          echo "tag=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Next version: $VERSION"
-
-      - name: Generate changelog
-        run: git-cliff --tag "${{ steps.bump.outputs.tag }}" -o CHANGELOG.md
-
-      - name: Update workspace version
-        run: |
-          sed -i '0,/^version = ".*"/s//version = "${{ steps.bump.outputs.version }}"/' Cargo.toml
-          cargo update --workspace
-
-      - name: Commit and tag
+      - name: Version, changelog, commit and tag
+        id: release
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add CHANGELOG.md Cargo.toml Cargo.lock
-          git commit -m "chore(release): ${{ steps.bump.outputs.tag }}"
-          git tag "${{ steps.bump.outputs.tag }}"
-          git push origin master --tags
+          # Outside the checkout: changesetter refuses to run on a dirty tree.
+          OUT="$RUNNER_TEMP/release.json"
+          changesetter release --output json | tee "$OUT"
+          # Nothing pending prints no JSON at all, so default to zero releases.
+          COUNT=$(jq '.releases | length' "$OUT" 2>/dev/null)
+          echo "count=${COUNT:-0}" >> "$GITHUB_OUTPUT"
+          echo "tag=$(jq -r '.releases[0].tag // empty' "$OUT" 2>/dev/null)" >> "$GITHUB_OUTPUT"
+
+      # Only no-bump changesets pending means no new version; push nothing.
+      - name: Push release commit and tag
+        if: steps.release.outputs.count != '0' && steps.release.outputs.tag != ''
+        run: git push origin HEAD:master "${{ steps.release.outputs.tag }}"

@@ -1,0 +1,17 @@
+# The workspace root carries the one version both crates inherit
+# (version.workspace = true), so it's declared as a single package.
+[[package]]
+name = "ridgeline"
+path = "."
+type = "cargo"
+
+[tag]
+# build.yml publishes releases from v* tags, and Homebrew builds its URLs from them.
+format = "v{version}"
+
+[release]
+commit_message = "chore(release): {versions}"
+
+[hooks]
+# Cargo.lock records the workspace version and CI builds with --locked.
+post_bump = ["cargo update --workspace"]
