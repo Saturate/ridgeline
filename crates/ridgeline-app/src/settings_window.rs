@@ -331,11 +331,15 @@ impl SettingsWindow {
                                 a.name == wanted
                             })
                         };
-                        // Tokens, health and PR ids are all keyed by name, so two
-                        // providers can't share one.
-                        if original_name.as_deref() != Some(name.as_str())
-                            && position(config, &name).is_some()
-                        {
+                        // Tokens, health and PR ids are all keyed by name, and token
+                        // files live on case-insensitive filesystems on macOS and
+                        // Windows, so "Work" and "work" would share one file.
+                        let clashes = config.0.providers.iter().any(|p| {
+                            let ProviderConfig::AzureDevOps(a) = p;
+                            a.name.eq_ignore_ascii_case(&name)
+                                && original_name.as_deref() != Some(a.name.as_str())
+                        });
+                        if clashes {
                             return false;
                         }
 
@@ -345,19 +349,23 @@ impl SettingsWindow {
                                 // Removed from config.toml while the dialog was open.
                                 return true;
                             };
+                            // A case-only rename points at the same token file, so
+                            // copying then deleting would delete the token itself.
+                            if !original.eq_ignore_ascii_case(&name) {
+                                if let Ok(old_token) = credentials::get_token(original) {
+                                    if credentials::store_token(&name, &old_token).is_err() {
+                                        // Keep the old name rather than end up with
+                                        // a provider whose token is under another one.
+                                        return false;
+                                    }
+                                    let _ = credentials::delete_token(original);
+                                }
+                            }
                             let ProviderConfig::AzureDevOps(ado) = &mut config.0.providers[idx];
                             ado.name = name.clone();
                             ado.url = url;
                             ado.color = color;
                             ado.auth = auth.clone();
-                            if *original != name {
-                                if let Ok(old_token) = credentials::get_token(original) {
-                                    // Only drop the old file once the copy exists.
-                                    if credentials::store_token(&name, &old_token).is_ok() {
-                                        let _ = credentials::delete_token(original);
-                                    }
-                                }
-                            }
                         } else {
                             config.0.providers.push(ProviderConfig::AzureDevOps(
                                 AzureDevOpsConfig {
@@ -473,10 +481,11 @@ impl SettingsWindow {
                             ("Badge".into(), "Name badge".into()),
                             ("Off".into(), "Off".into()),
                         ],
+                        // The dropdown matches this against option values, not labels.
                         |cx| match cx.try_global::<AppConfig>().map(|c| c.0.general.provider_indicator.clone()) {
-                            Some(ProviderIndicator::Badge) => "Name badge".into(),
+                            Some(ProviderIndicator::Badge) => "Badge".into(),
                             Some(ProviderIndicator::Off) => "Off".into(),
-                            _ => "Color stripe".into(),
+                            _ => "Border".into(),
                         },
                         |label, cx| {
                             let indicator = match label.as_ref() {

@@ -129,10 +129,11 @@ pub async fn enrich_build_status(
         if let Some((provider, _)) = provider {
             if let Ok(detail) = provider.get_detail(&pr.id).await {
                 let build_status = derive_build_status(&detail.policies);
-                // Running builds finish and failed ones get re-queued without a
-                // new commit, so only results that can't change are reused.
-                let settled = matches!(build_status, BuildStatus::Succeeded | BuildStatus::NotStarted);
-                if !commit_id.is_empty() && settled {
+                // Running builds finish, failed ones get re-queued, and
+                // NotStarted is also what a failed policy fetch or a fresh
+                // push looks like, all without a new commit. Only a pass is
+                // final enough to reuse.
+                if !commit_id.is_empty() && build_status == BuildStatus::Succeeded {
                     cache.insert(
                         pr.id.to_string(),
                         CachedBuildStatus {

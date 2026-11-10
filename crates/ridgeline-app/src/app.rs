@@ -66,6 +66,7 @@ pub struct Ridgeline {
     build_cache: HashMap<String, CachedBuildStatus>,
 
     init_task: Option<Task<()>>,
+    retry_task: Option<Task<()>>,
     poll_task: Option<Task<()>>,
     detail_task: Option<Task<()>>,
 }
@@ -98,7 +99,7 @@ impl Ridgeline {
         // A replaced token doesn't change the config, but the providers were
         // built with the old one baked in.
         cx.observe_global::<crate::settings_window::CredentialsVersion>(|this, cx| {
-            this.start_init(cx);
+            this.start_init(false, cx);
             cx.notify();
         })
         .detach();
@@ -135,11 +136,12 @@ impl Ridgeline {
             change_tracker: ChangeTracker::new(),
             build_cache: HashMap::new(),
             init_task: None,
+            retry_task: None,
             poll_task: None,
             detail_task: None,
         };
 
-        this.start_init(cx);
+        this.start_init(false, cx);
         this
     }
 
@@ -168,12 +170,20 @@ impl Ridgeline {
             self.authored.clear();
             self.build_cache.clear();
             self.phase = LoadPhase::Connecting;
-            self.start_init(cx);
+            self.start_init(false, cx);
         }
         cx.notify();
     }
 
-    fn start_init(&mut self, cx: &mut Context<Self>) {
+    /// Connects every configured provider. With `keep_current`, a reconnect
+    /// that fails everywhere leaves the existing providers polling (a refresh
+    /// while the network is down shouldn't stop everything); otherwise the
+    /// old poll task is stopped first so a replaced token can't keep working.
+    fn start_init(&mut self, keep_current: bool, cx: &mut Context<Self>) {
+        if !keep_current {
+            self.poll_task = None;
+        }
+        self.retry_task = None;
         let config = self.config.clone();
         self.init_task = Some(cx.spawn(async move |this, cx| {
             let providers_result = io(async move {
@@ -181,55 +191,74 @@ impl Ridgeline {
             })
             .await;
 
-            match providers_result {
-                Ok(results) => {
-                    let mut health = crate::settings_window::ProviderHealth::default();
-                    let mut failures = Vec::new();
-                    let mut providers: Vec<(Arc<dyn PrProvider>, UserId)> = Vec::new();
-                    for init in results {
-                        match init.result {
-                            Ok((provider, user)) => {
-                                health.0.insert(init.name, Ok(user.display_name.clone()));
-                                providers.push((provider, user));
-                            }
-                            Err(e) => {
-                                failures.push(format!("{}: {e}", init.name));
-                                health.0.insert(init.name, Err(e));
-                            }
-                        }
-                    }
-
-                    this.update(cx, |this, cx| {
-                        cx.set_global(health);
-                        cx.refresh_windows();
-                        this.providers = providers;
-                        this.offline = failures.clone();
-                        if this.config.providers.is_empty() {
-                            this.phase = LoadPhase::NoProviders;
-                            this.refreshing = false;
-                        } else if this.providers.is_empty() {
-                            this.phase = LoadPhase::Failed(failures.join("\n"));
-                            this.refreshing = false;
-                        } else {
-                            // Re-connecting from a refresh keeps the current list
-                            // on screen instead of flashing skeletons.
-                            if this.phase != LoadPhase::Ready {
-                                this.phase = LoadPhase::FirstPoll;
-                            }
-                            this.start_polling(cx);
-                        }
-                        cx.notify();
-                    })
-                    .ok();
-                }
+            let results = match providers_result {
+                Ok(results) => results,
                 Err(e) => {
                     this.update(cx, |this, cx| {
+                        this.refreshing = false;
                         this.phase = LoadPhase::Failed(e.to_string());
                         cx.notify();
                     })
                     .ok();
+                    return;
+                }
+            };
+
+            let mut health = crate::settings_window::ProviderHealth::default();
+            let mut failures = Vec::new();
+            let mut providers: Vec<(Arc<dyn PrProvider>, UserId)> = Vec::new();
+            for init in results {
+                match init.result {
+                    Ok((provider, user)) => {
+                        health.0.insert(init.name, Ok(user.display_name.clone()));
+                        providers.push((provider, user));
+                    }
+                    Err(e) => {
+                        failures.push(format!("{}: {e}", init.name));
+                        health.0.insert(init.name, Err(e));
+                    }
                 }
             }
+
+            this.update(cx, |this, cx| {
+                cx.set_global(health);
+                cx.refresh_windows();
+                this.offline = failures.clone();
+
+                if this.config.providers.is_empty() {
+                    this.providers.clear();
+                    this.phase = LoadPhase::NoProviders;
+                    this.refreshing = false;
+                } else if !providers.is_empty() {
+                    this.providers = providers;
+                    // Re-connecting from a refresh keeps the current list on
+                    // screen instead of flashing skeletons.
+                    if this.phase != LoadPhase::Ready {
+                        this.phase = LoadPhase::FirstPoll;
+                    }
+                    this.start_polling(cx);
+                } else if keep_current && this.poll_task.is_some() {
+                    // Nothing new connected; keep polling what already works.
+                    this.refreshing = false;
+                } else {
+                    this.providers.clear();
+                    this.phase = LoadPhase::Failed(failures.join("\n"));
+                    this.refreshing = false;
+                    this.schedule_retry(cx);
+                }
+                cx.notify();
+            })
+            .ok();
+        }));
+    }
+
+    /// Nothing is polling after a total connect failure, so try again on the
+    /// normal interval instead of waiting for a manual refresh.
+    fn schedule_retry(&mut self, cx: &mut Context<Self>) {
+        let secs = self.config.general.refresh_interval_secs.max(10);
+        self.retry_task = Some(cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(Duration::from_secs(secs)).await;
+            this.update(cx, |this, cx| this.start_init(false, cx)).ok();
         }));
     }
 
@@ -270,12 +299,24 @@ impl Ridgeline {
                             &mut cache,
                         )
                         .await;
-                        // Decided before thread errors are added: those are
-                        // per-PR and don't mean the provider is unreachable.
-                        let failed: std::collections::HashSet<&str> =
-                            result.errors.iter().map(|e| e.provider.as_str()).collect();
-                        let all_failed = !providers.is_empty()
-                            && providers.iter().all(|(p, _)| failed.contains(p.name()));
+                        // Provider health comes from the list queries only;
+                        // a thread fetch failing for one PR doesn't make the
+                        // whole organization unreachable.
+                        let mut provider_errors: HashMap<String, String> = HashMap::new();
+                        for e in &result.errors {
+                            provider_errors
+                                .entry(e.provider.clone())
+                                .or_insert_with(|| e.message.clone());
+                        }
+                        // "Couldn't ask" only when nothing came back at all and
+                        // every provider errored; one bad project query on an
+                        // otherwise working provider still shows its PRs.
+                        let all_failed = result.reviewing.is_empty()
+                            && result.authored.is_empty()
+                            && !providers.is_empty()
+                            && providers
+                                .iter()
+                                .all(|(p, _)| provider_errors.contains_key(p.name()));
                         let thread_errors = ridgeline_core::enrich_open_threads(
                             &mut result.authored,
                             &providers,
@@ -283,54 +324,23 @@ impl Ridgeline {
                         )
                         .await;
                         result.errors.extend(thread_errors);
-                        Ok((result, cache, all_failed))
+                        Ok((result, cache, all_failed, provider_errors))
                     }
                 })
                 .await;
 
                 match poll_result {
-                    Ok((result, cache, all_failed)) => {
-
+                    Ok((result, cache, all_failed, provider_errors)) => {
                         this.update(cx, |this, cx| {
-                            let all_prs: Vec<_> = result
-                                .reviewing
-                                .iter()
-                                .chain(result.authored.iter())
-                                .cloned()
-                                .collect();
-                            let changes = this.change_tracker.detect_changes(&all_prs);
-
-                            if !first_poll {
-                                let notif_config = (
-                                    this.config.general.notifications_enabled,
-                                    this.config.general.notifications.clone(),
-                                );
-                                for change in &changes {
-                                    if notif_config.0
-                                        && ridgeline_core::should_notify(change, &notif_config.1)
-                                    {
-                                        ridgeline_core::notifications::sender::send_with_url(
-                                            &change.notification_title(),
-                                            &change.notification_body(),
-                                            change.web_url(),
-                                        );
-                                    }
-                                }
-                            }
-
                             let mut health = cx
                                 .try_global::<crate::settings_window::ProviderHealth>()
                                 .cloned()
                                 .unwrap_or_default();
                             for (provider, user) in &this.providers {
-                                let error = result
-                                    .errors
-                                    .iter()
-                                    .find(|e| e.provider == provider.name());
                                 health.0.insert(
                                     provider.name().to_string(),
-                                    match error {
-                                        Some(e) => Err(e.message.clone()),
+                                    match provider_errors.get(provider.name()) {
+                                        Some(e) => Err(e.clone()),
                                         None => Ok(user.display_name.clone()),
                                     },
                                 );
@@ -341,8 +351,9 @@ impl Ridgeline {
                             this.build_cache = cache;
                             this.refreshing = false;
                             if all_failed {
-                                // Empty lists here mean "couldn't ask", not
-                                // "nothing to do"; don't show "All clear".
+                                // Checked before the change tracker: feeding it
+                                // empty lists would forget every PR and fire a
+                                // "new PR" notification for each on recovery.
                                 let reason = result
                                     .errors
                                     .iter()
@@ -350,8 +361,10 @@ impl Ridgeline {
                                     .collect::<Vec<_>>()
                                     .join("\n");
                                 if this.phase == LoadPhase::Ready {
-                                    this.status_message =
-                                        Some("Couldn't reach any provider; showing the last results".into());
+                                    this.status_message = Some(
+                                        "Couldn't reach any provider; showing the last results"
+                                            .into(),
+                                    );
                                 } else {
                                     this.phase = LoadPhase::Failed(reason);
                                 }
@@ -360,13 +373,32 @@ impl Ridgeline {
                                 return;
                             }
 
+                            let all_prs: Vec<_> = result
+                                .reviewing
+                                .iter()
+                                .chain(result.authored.iter())
+                                .cloned()
+                                .collect();
+                            let changes = this.change_tracker.detect_changes(&all_prs);
+                            if !first_poll && this.config.general.notifications_enabled {
+                                let notif_config = this.config.general.notifications.clone();
+                                for change in &changes {
+                                    if ridgeline_core::should_notify(change, &notif_config) {
+                                        ridgeline_core::notifications::sender::send_with_url(
+                                            &change.notification_title(),
+                                            &change.notification_body(),
+                                            change.web_url(),
+                                        );
+                                    }
+                                }
+                            }
+
                             this.reviewing = result.reviewing;
                             this.authored = result.authored;
                             this.errors = result.errors;
                             this.last_poll = Some(chrono::Utc::now());
                             this.status_message = None;
                             this.phase = LoadPhase::Ready;
-                            this.refreshing = false;
                             first_poll = false;
                             cx.notify();
                         })
@@ -388,18 +420,22 @@ impl Ridgeline {
                     }
                 }
 
-                // Read each cycle so editing the interval in settings takes
-                // effect on the next poll without restarting (and refetching).
-                let interval_secs = this
-                    .update(cx, |this, _| this.config.general.refresh_interval_secs.max(10))
-                    .unwrap_or(60);
-                let sleep = io(async move {
-                    tokio::time::sleep(Duration::from_secs(interval_secs)).await;
-                    Ok(())
-                })
-                .await;
-                if sleep.is_err() {
-                    break;
+                // Sleep in short steps and re-read the interval each time, so
+                // lowering it in settings takes effect without waiting out the
+                // old (possibly 10 minute) sleep or restarting the poll.
+                let mut waited = 0u64;
+                loop {
+                    let Ok(interval) = this
+                        .update(cx, |this, _| this.config.general.refresh_interval_secs.max(10))
+                    else {
+                        return;
+                    };
+                    if waited >= interval {
+                        break;
+                    }
+                    let step = (interval - waited).min(5);
+                    cx.background_executor().timer(Duration::from_secs(step)).await;
+                    waited += step;
                 }
             }
         }));
@@ -410,11 +446,11 @@ impl Ridgeline {
         if matches!(self.phase, LoadPhase::Failed(_)) {
             self.phase = LoadPhase::FirstPoll;
         }
-        // Reconnect when something is offline so a provider that failed at
-        // startup (network down, expired `az login`) gets another chance.
         if self.providers.is_empty() || !self.offline.is_empty() {
-            self.poll_task = None;
-            self.start_init(cx);
+            // Reconnect so a provider that failed at startup (network down,
+            // expired `az login`) gets another chance. Whatever is connected
+            // keeps polling until the reconnect succeeds.
+            self.start_init(true, cx);
         } else {
             self.poll_task = None;
             self.start_polling(cx);
@@ -527,7 +563,9 @@ impl Ridgeline {
         source_prs
             .into_iter()
             .filter(|pr| {
-                if let Some(ref waiting_on) = tab.filter.waiting_on {
+                // Thread counts only exist for authored PRs, so the filter
+                // only means something there (the dialog hides it elsewhere).
+                if let Some(waiting_on) = tab.filter.waiting_on.as_ref().filter(|_| tab.source == TabSource::Authored) {
                     let on_author = pr.is_waiting_on_author();
                     if on_author != (*waiting_on == WaitingOn::Author) {
                         return false;
@@ -565,7 +603,7 @@ impl Ridgeline {
                     }
                 }
                 if apply_search && !self.search_text.is_empty() {
-                    let q = self.search_text.to_lowercase();
+                    let q = self.search_text.trim().to_lowercase();
                     let matches = pr.title.to_lowercase().contains(&q)
                         || pr.author.display_name.to_lowercase().contains(&q)
                         || pr.repository.name.to_lowercase().contains(&q)
@@ -1285,7 +1323,12 @@ impl Ridgeline {
             }
         };
 
-        let reviewing_count = self.reviewing.len();
+        // Same rule as the Reviewing tab: your own PRs count as authored.
+        let reviewing_count = self
+            .reviewing
+            .iter()
+            .filter(|pr| !self.authored.iter().any(|a| a.id == pr.id))
+            .count();
         let authored_count = self.authored.len();
         let error_count = self.errors.len();
 

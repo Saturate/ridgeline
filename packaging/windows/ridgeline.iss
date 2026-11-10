@@ -37,17 +37,30 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; Flags: unchecked
 Filename: "{app}\ridgeline.exe"; Description: "{cm:LaunchProgram,Ridgeline}"; Flags: nowait postinstall skipifsilent
 
 [Code]
+const
+  TauriUninstallKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\Ridgeline';
+
 // Versions up to 0.7 were Tauri NSIS installs with their own uninstall entry.
 // Remove that silently first so upgrading doesn't leave two copies installed.
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
-  Uninstaller: String;
+  Uninstaller, InstallDir: String;
   ResultCode: Integer;
 begin
   Result := '';
-  if RegQueryStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\Ridgeline',
-    'UninstallString', Uninstaller) then
-  begin
-    Exec(RemoveQuotes(Uninstaller), '/S', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  end;
+  if not RegQueryStringValue(HKCU, TauriUninstallKey, 'UninstallString', Uninstaller) then
+    exit;
+  Uninstaller := RemoveQuotes(Uninstaller);
+  if RegQueryStringValue(HKCU, TauriUninstallKey, 'InstallLocation', InstallDir) then
+    InstallDir := RemoveQuotes(InstallDir)
+  else
+    InstallDir := ExtractFileDir(Uninstaller);
+
+  // Without _?= an NSIS uninstaller copies itself to %TEMP% and returns at
+  // once, so the wait below would end before it finished (and it could then
+  // delete the shortcuts this installer is about to create).
+  Exec(Uninstaller, '/S _?=' + InstallDir, '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  // _?= leaves the uninstaller and its folder behind.
+  DeleteFile(Uninstaller);
+  RemoveDir(InstallDir);
 end;
