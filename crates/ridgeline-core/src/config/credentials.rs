@@ -6,7 +6,9 @@ use anyhow::{Context, Result};
 /// Token file path: ~/.config/ridgeline/.token_<provider>
 fn token_file_path(provider_name: &str) -> Result<PathBuf> {
     let base = dirs::config_dir().context("could not determine config directory")?;
-    Ok(base.join("ridgeline").join(format!(".token_{provider_name}")))
+    Ok(base
+        .join("ridgeline")
+        .join(format!(".token_{provider_name}")))
 }
 
 pub fn store_token(provider_name: &str, token: &str) -> Result<()> {
@@ -52,7 +54,11 @@ pub fn rename_token(old_name: &str, new_name: &str) -> Result<()> {
     }
     let to = token_file_path(new_name)?;
     fs::rename(&from, &to).with_context(|| {
-        format!("failed to move token {} to {}", from.display(), to.display())
+        format!(
+            "failed to move token {} to {}",
+            from.display(),
+            to.display()
+        )
     })
 }
 

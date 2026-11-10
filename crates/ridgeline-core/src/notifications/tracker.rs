@@ -32,7 +32,8 @@ pub struct ChangeTracker {
 
 impl ChangeTracker {
     pub fn new() -> Self {
-        let state_path = dirs::config_dir().map(|d| d.join("ridgeline").join(".tracker_state.json"));
+        let state_path =
+            dirs::config_dir().map(|d| d.join("ridgeline").join(".tracker_state.json"));
 
         let mut tracker = Self {
             known_prs: HashSet::new(),
@@ -279,9 +280,22 @@ impl Change {
 
     pub fn resolve_disappeared(self, status: PrStatus) -> Option<Self> {
         match self {
-            Change::Disappeared { title, repo, web_url, .. } => match status {
-                PrStatus::Abandoned => Some(Change::Abandoned { title, repo, web_url }),
-                PrStatus::Completed => Some(Change::Completed { title, repo, web_url }),
+            Change::Disappeared {
+                title,
+                repo,
+                web_url,
+                ..
+            } => match status {
+                PrStatus::Abandoned => Some(Change::Abandoned {
+                    title,
+                    repo,
+                    web_url,
+                }),
+                PrStatus::Completed => Some(Change::Completed {
+                    title,
+                    repo,
+                    web_url,
+                }),
                 PrStatus::Active => None,
             },
             other => Some(other),
@@ -324,10 +338,7 @@ impl Change {
                 new_vote,
                 ..
             } => {
-                format!(
-                    "{reviewer} voted {} on \"{pr_title}\"",
-                    new_vote.symbol()
-                )
+                format!("{reviewer} voted {} on \"{pr_title}\"", new_vote.symbol())
             }
             Change::Completed { title, repo, .. } => {
                 format!("\"{title}\" in {repo} was completed")
@@ -419,6 +430,10 @@ mod tests {
         let mut t = tracker();
         t.detect_changes(&[pr("a", 1), pr("b", 2)]);
         let changes = t.detect_changes_partial(&[pr("b", 2)], &HashSet::new());
-        assert!(changes.iter().any(|c| matches!(c, Change::Disappeared { .. })));
+        assert!(
+            changes
+                .iter()
+                .any(|c| matches!(c, Change::Disappeared { .. }))
+        );
     }
 }

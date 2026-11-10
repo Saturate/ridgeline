@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use gpui_kit::component::{
-    ActiveTheme as _, Icon, IconName, TitleBar, WindowExt as _,
+    ActiveTheme as _, Icon, IconName, Sizable as _, TitleBar, WindowExt as _,
     button::{Button, ButtonVariants as _},
     dialog::{DialogAction, DialogClose, DialogFooter},
     h_flex,
@@ -10,13 +10,14 @@ use gpui_kit::component::{
         NumberFieldOptions, SettingField, SettingGroup, SettingItem, SettingPage,
         Settings as SettingsView,
     },
-    Sizable as _,
     v_flex,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
-use ridgeline_core::config::model::{AuthMethod, AzureDevOpsConfig, Config, ProviderConfig, ProviderIndicator};
+use ridgeline_core::config::model::{
+    AuthMethod, AzureDevOpsConfig, Config, ProviderConfig, ProviderIndicator,
+};
 use ridgeline_core::config::{credentials, loader};
 use ridgeline_core::providers::azure_devops::AzureDevOpsProvider;
 use ridgeline_core::providers::traits::PrProvider;
@@ -25,8 +26,8 @@ use crate::pr_row::parse_hex_color;
 use crate::settings::{Appearance, Settings};
 
 mod tabs;
-use tabs::PendingTabEdit;
 use crate::theme::InstalledThemes;
+use tabs::PendingTabEdit;
 
 // --- Globals ---
 
@@ -90,7 +91,6 @@ struct ProviderDraft {
     auth: AuthMethod,
 }
 
-
 // --- Settings Window ---
 
 pub struct SettingsWindow {
@@ -146,9 +146,7 @@ impl SettingsWindow {
     }
 
     fn check_pending_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let pending = cx
-            .try_global::<PendingProviderEdit>()
-            .and_then(|p| p.0);
+        let pending = cx.try_global::<PendingProviderEdit>().and_then(|p| p.0);
         if let Some(editing_idx) = pending {
             cx.set_global(PendingProviderEdit(None));
             self.open_provider_dialog(editing_idx, window, cx);
@@ -167,10 +165,11 @@ impl SettingsWindow {
         cx: &mut Context<Self>,
     ) {
         let existing = editing_idx.and_then(|idx| {
-            cx.try_global::<AppConfig>().and_then(|c| match c.0.providers.get(idx) {
-                Some(ProviderConfig::AzureDevOps(ado)) => Some(ado.clone()),
-                None => None,
-            })
+            cx.try_global::<AppConfig>()
+                .and_then(|c| match c.0.providers.get(idx) {
+                    Some(ProviderConfig::AzureDevOps(ado)) => Some(ado.clone()),
+                    None => None,
+                })
         });
 
         let (name, url, color, auth) = match &existing {
@@ -192,15 +191,22 @@ impl SettingsWindow {
         // can be reloaded from disk while the dialog is open.
         let original_name: Option<String> = existing.as_ref().map(|a| a.name.clone());
 
-        self.edit_name.update(cx, |s, cx| s.set_value(&name, window, cx));
-        self.edit_url.update(cx, |s, cx| s.set_value(&url, window, cx));
-        self.edit_color.update(cx, |s, cx| s.set_value(&color, window, cx));
+        self.edit_name
+            .update(cx, |s, cx| s.set_value(&name, window, cx));
+        self.edit_url
+            .update(cx, |s, cx| s.set_value(&url, window, cx));
+        self.edit_color
+            .update(cx, |s, cx| s.set_value(&color, window, cx));
         // Leave the PAT field empty for an existing token; saving an empty
         // field keeps the stored one.
         self.edit_pat.update(cx, |s, cx| {
             s.set_value("", window, cx);
             s.set_placeholder(
-                if has_token { "Stored. Paste a new one to replace it" } else { "Paste PAT here" },
+                if has_token {
+                    "Stored. Paste a new one to replace it"
+                } else {
+                    "Paste PAT here"
+                },
                 window,
                 cx,
             );
@@ -225,8 +231,16 @@ impl SettingsWindow {
             let mut fields = v_flex()
                 .gap_3()
                 .p_2()
-                .child(labeled_field("Name", &name_input, "A short label, shown on badges and in errors"))
-                .child(labeled_field("Organization URL", &url_input, "e.g. https://dev.azure.com/your-org"))
+                .child(labeled_field(
+                    "Name",
+                    &name_input,
+                    "A short label, shown on badges and in errors",
+                ))
+                .child(labeled_field(
+                    "Organization URL",
+                    &url_input,
+                    "e.g. https://dev.azure.com/your-org",
+                ))
                 .child(choice(
                     "Sign in with",
                     "provider-auth",
@@ -245,36 +259,37 @@ impl SettingsWindow {
                     &pat_input,
                     "Needs Code (Read) scope. Saved as a plain file in Ridgeline's config folder.",
                 )),
-                AuthMethod::AzureCli => fields.child(
-                    div()
-                        .text_xs()
-                        .child("Uses the account from `az login`. Run it in a terminal first if you haven't."),
-                ),
+                AuthMethod::AzureCli => fields.child(div().text_xs().child(
+                    "Uses the account from `az login`. Run it in a terminal first if you haven't.",
+                )),
                 AuthMethod::DeviceCode => fields.child(div().text_xs().child(
                     "Browser sign-in has no sign-in flow in the app yet. Pick another method.",
                 )),
             };
 
-            fields = fields.child(
-                v_flex()
-                    .gap_1()
-                    .child(field_label("Color"))
-                    .child(
-                        h_flex()
-                            .gap_2()
-                            .items_center()
-                            .child(div().flex_1().child(Input::new(&color_input).small()))
-                            .child(
-                                div()
-                                    .size(px(22.))
-                                    .rounded_sm()
-                                    .border_1()
-                                    .border_color(cx.theme().border)
-                                    .when_some(color_preview, |d, c| d.bg(c)),
-                            ),
-                    )
-                    .child(div().text_xs().child("Hex like #3b82f6. Used for the stripe or badge on each PR row.")),
-            );
+            fields =
+                fields.child(
+                    v_flex()
+                        .gap_1()
+                        .child(field_label("Color"))
+                        .child(
+                            h_flex()
+                                .gap_2()
+                                .items_center()
+                                .child(div().flex_1().child(Input::new(&color_input).small()))
+                                .child(
+                                    div()
+                                        .size(px(22.))
+                                        .rounded_sm()
+                                        .border_1()
+                                        .border_color(cx.theme().border)
+                                        .when_some(color_preview, |d, c| d.bg(c)),
+                                ),
+                        )
+                        .child(div().text_xs().child(
+                            "Hex like #3b82f6. Used for the stripe or badge on each PR row.",
+                        )),
+                );
 
             dialog
                 .title(title)
@@ -295,12 +310,17 @@ impl SettingsWindow {
                                 ),
                             )
                         })
-                        .child(footer_slot(DialogClose::new().child(Button::new("cancel").label("Cancel").outline())))
-                        .child(footer_slot(DialogAction::new().child(
-                            Button::new("save")
-                                .label(if editing_idx.is_some() { "Save" } else { "Add" })
-                                .primary(),
-                        ))),
+                        .child(footer_slot(
+                            DialogClose::new()
+                                .child(Button::new("cancel").label("Cancel").outline()),
+                        ))
+                        .child(footer_slot(
+                            DialogAction::new().child(
+                                Button::new("save")
+                                    .label(if editing_idx.is_some() { "Save" } else { "Add" })
+                                    .primary(),
+                            ),
+                        )),
                 )
                 .on_ok({
                     let original_name = original_name.clone();
@@ -443,56 +463,133 @@ impl SettingsWindow {
             .icon(Icon::new(IconName::Settings))
             .groups(vec![
                 SettingGroup::new().title("Polling").items(vec![
-                    SettingItem::new("Refresh interval", SettingField::number_input(
-                        NumberFieldOptions { min: 10., max: 600., step: 10. },
-                        |cx| cx.try_global::<AppConfig>().map(|c| c.0.general.refresh_interval_secs as f64).unwrap_or(60.),
-                        |v, cx| { let c = cx.global_mut::<AppConfig>(); c.0.general.refresh_interval_secs = v as u64; let _ = loader::save_config(&c.0); },
-                    )).description("Seconds between polls"),
+                    SettingItem::new(
+                        "Refresh interval",
+                        SettingField::number_input(
+                            NumberFieldOptions {
+                                min: 10.,
+                                max: 600.,
+                                step: 10.,
+                            },
+                            |cx| {
+                                cx.try_global::<AppConfig>()
+                                    .map(|c| c.0.general.refresh_interval_secs as f64)
+                                    .unwrap_or(60.)
+                            },
+                            |v, cx| {
+                                let c = cx.global_mut::<AppConfig>();
+                                c.0.general.refresh_interval_secs = v as u64;
+                                let _ = loader::save_config(&c.0);
+                            },
+                        ),
+                    )
+                    .description("Seconds between polls"),
                 ]),
                 SettingGroup::new().title("PR Age Indicators").items(vec![
-                    SettingItem::new("Warning after (hours)", SettingField::number_input(
-                        NumberFieldOptions { min: 1., max: 720., step: 12. },
-                        |cx| cx.try_global::<AppConfig>().map(|c| c.0.general.age_warning_hours as f64).unwrap_or(48.),
-                        |v, cx| { let c = cx.global_mut::<AppConfig>(); c.0.general.age_warning_hours = v as u64; let _ = loader::save_config(&c.0); },
-                    )).description("Age turns yellow"),
-                    SettingItem::new("Danger after (hours)", SettingField::number_input(
-                        NumberFieldOptions { min: 1., max: 2160., step: 24. },
-                        |cx| cx.try_global::<AppConfig>().map(|c| c.0.general.age_danger_hours as f64).unwrap_or(144.),
-                        |v, cx| { let c = cx.global_mut::<AppConfig>(); c.0.general.age_danger_hours = v as u64; let _ = loader::save_config(&c.0); },
-                    )).description("Age turns red"),
+                    SettingItem::new(
+                        "Warning after (hours)",
+                        SettingField::number_input(
+                            NumberFieldOptions {
+                                min: 1.,
+                                max: 720.,
+                                step: 12.,
+                            },
+                            |cx| {
+                                cx.try_global::<AppConfig>()
+                                    .map(|c| c.0.general.age_warning_hours as f64)
+                                    .unwrap_or(48.)
+                            },
+                            |v, cx| {
+                                let c = cx.global_mut::<AppConfig>();
+                                c.0.general.age_warning_hours = v as u64;
+                                let _ = loader::save_config(&c.0);
+                            },
+                        ),
+                    )
+                    .description("Age turns yellow"),
+                    SettingItem::new(
+                        "Danger after (hours)",
+                        SettingField::number_input(
+                            NumberFieldOptions {
+                                min: 1.,
+                                max: 2160.,
+                                step: 24.,
+                            },
+                            |cx| {
+                                cx.try_global::<AppConfig>()
+                                    .map(|c| c.0.general.age_danger_hours as f64)
+                                    .unwrap_or(144.)
+                            },
+                            |v, cx| {
+                                let c = cx.global_mut::<AppConfig>();
+                                c.0.general.age_danger_hours = v as u64;
+                                let _ = loader::save_config(&c.0);
+                            },
+                        ),
+                    )
+                    .description("Age turns red"),
                 ]),
                 SettingGroup::new().title("Display").items(vec![
-                    SettingItem::new("Show project name", SettingField::switch(
-                        |cx| cx.try_global::<AppConfig>().map(|c| c.0.general.show_project_name).unwrap_or(true),
-                        |v, cx| { let c = cx.global_mut::<AppConfig>(); c.0.general.show_project_name = v; let _ = loader::save_config(&c.0); },
-                    )),
-                    SettingItem::new("Parse conventional commits", SettingField::switch(
-                        |cx| cx.try_global::<AppConfig>().map(|c| c.0.general.parse_conventional_commits).unwrap_or(false),
-                        |v, cx| { let c = cx.global_mut::<AppConfig>(); c.0.general.parse_conventional_commits = v; let _ = loader::save_config(&c.0); },
-                    )),
-                    SettingItem::new("Provider indicator", SettingField::dropdown(
-                        vec![
-                            ("Border".into(), "Color stripe".into()),
-                            ("Badge".into(), "Name badge".into()),
-                            ("Off".into(), "Off".into()),
-                        ],
-                        // The dropdown matches this against option values, not labels.
-                        |cx| match cx.try_global::<AppConfig>().map(|c| c.0.general.provider_indicator.clone()) {
-                            Some(ProviderIndicator::Badge) => "Badge".into(),
-                            Some(ProviderIndicator::Off) => "Off".into(),
-                            _ => "Border".into(),
-                        },
-                        |label, cx| {
-                            let indicator = match label.as_ref() {
-                                "Name badge" | "Badge" => ProviderIndicator::Badge,
-                                "Off" => ProviderIndicator::Off,
-                                _ => ProviderIndicator::Border,
-                            };
-                            let c = cx.global_mut::<AppConfig>();
-                            c.0.general.provider_indicator = indicator;
-                            let _ = loader::save_config(&c.0);
-                        },
-                    )).description("How each PR row shows which organization it's from"),
+                    SettingItem::new(
+                        "Show project name",
+                        SettingField::switch(
+                            |cx| {
+                                cx.try_global::<AppConfig>()
+                                    .map(|c| c.0.general.show_project_name)
+                                    .unwrap_or(true)
+                            },
+                            |v, cx| {
+                                let c = cx.global_mut::<AppConfig>();
+                                c.0.general.show_project_name = v;
+                                let _ = loader::save_config(&c.0);
+                            },
+                        ),
+                    ),
+                    SettingItem::new(
+                        "Parse conventional commits",
+                        SettingField::switch(
+                            |cx| {
+                                cx.try_global::<AppConfig>()
+                                    .map(|c| c.0.general.parse_conventional_commits)
+                                    .unwrap_or(false)
+                            },
+                            |v, cx| {
+                                let c = cx.global_mut::<AppConfig>();
+                                c.0.general.parse_conventional_commits = v;
+                                let _ = loader::save_config(&c.0);
+                            },
+                        ),
+                    ),
+                    SettingItem::new(
+                        "Provider indicator",
+                        SettingField::dropdown(
+                            vec![
+                                ("Border".into(), "Color stripe".into()),
+                                ("Badge".into(), "Name badge".into()),
+                                ("Off".into(), "Off".into()),
+                            ],
+                            // The dropdown matches this against option values, not labels.
+                            |cx| match cx
+                                .try_global::<AppConfig>()
+                                .map(|c| c.0.general.provider_indicator.clone())
+                            {
+                                Some(ProviderIndicator::Badge) => "Badge".into(),
+                                Some(ProviderIndicator::Off) => "Off".into(),
+                                _ => "Border".into(),
+                            },
+                            |label, cx| {
+                                let indicator = match label.as_ref() {
+                                    "Name badge" | "Badge" => ProviderIndicator::Badge,
+                                    "Off" => ProviderIndicator::Off,
+                                    _ => ProviderIndicator::Border,
+                                };
+                                let c = cx.global_mut::<AppConfig>();
+                                c.0.general.provider_indicator = indicator;
+                                let _ = loader::save_config(&c.0);
+                            },
+                        ),
+                    )
+                    .description("How each PR row shows which organization it's from"),
                 ]),
             ])
     }
@@ -500,67 +597,186 @@ impl SettingsWindow {
     fn notifications_page(&self) -> SettingPage {
         SettingPage::new("Notifications")
             .icon(Icon::new(IconName::Bell))
-            .groups(vec![SettingGroup::new().title("Desktop Notifications").items(vec![
-                SettingItem::new("Enabled", SettingField::switch(
-                    |cx| cx.try_global::<AppConfig>().map(|c| c.0.general.notifications_enabled).unwrap_or(true),
-                    |v, cx| { let c = cx.global_mut::<AppConfig>(); c.0.general.notifications_enabled = v; let _ = loader::save_config(&c.0); },
-                )).description("Master toggle"),
-                SettingItem::new("New pull request", SettingField::switch(
-                    |cx| cx.try_global::<AppConfig>().map(|c| c.0.general.notifications.new_pr).unwrap_or(true),
-                    |v, cx| { let c = cx.global_mut::<AppConfig>(); c.0.general.notifications.new_pr = v; let _ = loader::save_config(&c.0); },
-                )),
-                SettingItem::new("Vote changed", SettingField::switch(
-                    |cx| cx.try_global::<AppConfig>().map(|c| c.0.general.notifications.vote_changed).unwrap_or(true),
-                    |v, cx| { let c = cx.global_mut::<AppConfig>(); c.0.general.notifications.vote_changed = v; let _ = loader::save_config(&c.0); },
-                )),
-                SettingItem::new("Waiting for author", SettingField::switch(
-                    |cx| cx.try_global::<AppConfig>().map(|c| c.0.general.notifications.waiting_for_author).unwrap_or(true),
-                    |v, cx| { let c = cx.global_mut::<AppConfig>(); c.0.general.notifications.waiting_for_author = v; let _ = loader::save_config(&c.0); },
-                )),
-                SettingItem::new("Build failed", SettingField::switch(
-                    |cx| cx.try_global::<AppConfig>().map(|c| c.0.general.notifications.build_failed).unwrap_or(true),
-                    |v, cx| { let c = cx.global_mut::<AppConfig>(); c.0.general.notifications.build_failed = v; let _ = loader::save_config(&c.0); },
-                )),
-                SettingItem::new("PR completed", SettingField::switch(
-                    |cx| cx.try_global::<AppConfig>().map(|c| c.0.general.notifications.completed).unwrap_or(true),
-                    |v, cx| { let c = cx.global_mut::<AppConfig>(); c.0.general.notifications.completed = v; let _ = loader::save_config(&c.0); },
-                )),
-                SettingItem::new("Test", SettingField::render(|options, _, _| {
-                    Button::new("test-notification")
-                        .outline()
-                        .with_size(options.size())
-                        .label("Send test notification")
-                        .on_click(|_, _, _| {
-                            ridgeline_core::notifications::sender::send_simple(
-                                "Ridgeline",
-                                "Notifications are working.",
-                            );
-                        })
-                })).description("Check that your OS lets Ridgeline show notifications"),
-            ])])
+            .groups(vec![
+                SettingGroup::new()
+                    .title("Desktop Notifications")
+                    .items(vec![
+                        SettingItem::new(
+                            "Enabled",
+                            SettingField::switch(
+                                |cx| {
+                                    cx.try_global::<AppConfig>()
+                                        .map(|c| c.0.general.notifications_enabled)
+                                        .unwrap_or(true)
+                                },
+                                |v, cx| {
+                                    let c = cx.global_mut::<AppConfig>();
+                                    c.0.general.notifications_enabled = v;
+                                    let _ = loader::save_config(&c.0);
+                                },
+                            ),
+                        )
+                        .description("Master toggle"),
+                        SettingItem::new(
+                            "New pull request",
+                            SettingField::switch(
+                                |cx| {
+                                    cx.try_global::<AppConfig>()
+                                        .map(|c| c.0.general.notifications.new_pr)
+                                        .unwrap_or(true)
+                                },
+                                |v, cx| {
+                                    let c = cx.global_mut::<AppConfig>();
+                                    c.0.general.notifications.new_pr = v;
+                                    let _ = loader::save_config(&c.0);
+                                },
+                            ),
+                        ),
+                        SettingItem::new(
+                            "Vote changed",
+                            SettingField::switch(
+                                |cx| {
+                                    cx.try_global::<AppConfig>()
+                                        .map(|c| c.0.general.notifications.vote_changed)
+                                        .unwrap_or(true)
+                                },
+                                |v, cx| {
+                                    let c = cx.global_mut::<AppConfig>();
+                                    c.0.general.notifications.vote_changed = v;
+                                    let _ = loader::save_config(&c.0);
+                                },
+                            ),
+                        ),
+                        SettingItem::new(
+                            "Waiting for author",
+                            SettingField::switch(
+                                |cx| {
+                                    cx.try_global::<AppConfig>()
+                                        .map(|c| c.0.general.notifications.waiting_for_author)
+                                        .unwrap_or(true)
+                                },
+                                |v, cx| {
+                                    let c = cx.global_mut::<AppConfig>();
+                                    c.0.general.notifications.waiting_for_author = v;
+                                    let _ = loader::save_config(&c.0);
+                                },
+                            ),
+                        ),
+                        SettingItem::new(
+                            "Build failed",
+                            SettingField::switch(
+                                |cx| {
+                                    cx.try_global::<AppConfig>()
+                                        .map(|c| c.0.general.notifications.build_failed)
+                                        .unwrap_or(true)
+                                },
+                                |v, cx| {
+                                    let c = cx.global_mut::<AppConfig>();
+                                    c.0.general.notifications.build_failed = v;
+                                    let _ = loader::save_config(&c.0);
+                                },
+                            ),
+                        ),
+                        SettingItem::new(
+                            "PR completed",
+                            SettingField::switch(
+                                |cx| {
+                                    cx.try_global::<AppConfig>()
+                                        .map(|c| c.0.general.notifications.completed)
+                                        .unwrap_or(true)
+                                },
+                                |v, cx| {
+                                    let c = cx.global_mut::<AppConfig>();
+                                    c.0.general.notifications.completed = v;
+                                    let _ = loader::save_config(&c.0);
+                                },
+                            ),
+                        ),
+                        SettingItem::new(
+                            "Test",
+                            SettingField::render(|options, _, _| {
+                                Button::new("test-notification")
+                                    .outline()
+                                    .with_size(options.size())
+                                    .label("Send test notification")
+                                    .on_click(|_, _, _| {
+                                        ridgeline_core::notifications::sender::send_simple(
+                                            "Ridgeline",
+                                            "Notifications are working.",
+                                        );
+                                    })
+                            }),
+                        )
+                        .description("Check that your OS lets Ridgeline show notifications"),
+                    ]),
+            ])
     }
 
     fn appearance_page(&self, cx: &Context<Self>) -> SettingPage {
-        let appearance_items: Vec<(SharedString, SharedString)> = Appearance::ALL.iter().map(|a| (a.label().into(), a.label().into())).collect();
-        let dark_themes: Vec<(SharedString, SharedString)> = cx.try_global::<InstalledThemes>().map(|i| i.themes.iter().filter(|(_, dark)| *dark).map(|(n, _)| (n.clone().into(), n.clone().into())).collect()).unwrap_or_default();
-        let light_themes: Vec<(SharedString, SharedString)> = cx.try_global::<InstalledThemes>().map(|i| i.themes.iter().filter(|(_, dark)| !*dark).map(|(n, _)| (n.clone().into(), n.clone().into())).collect()).unwrap_or_default();
+        let appearance_items: Vec<(SharedString, SharedString)> = Appearance::ALL
+            .iter()
+            .map(|a| (a.label().into(), a.label().into()))
+            .collect();
+        let dark_themes: Vec<(SharedString, SharedString)> = cx
+            .try_global::<InstalledThemes>()
+            .map(|i| {
+                i.themes
+                    .iter()
+                    .filter(|(_, dark)| *dark)
+                    .map(|(n, _)| (n.clone().into(), n.clone().into()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let light_themes: Vec<(SharedString, SharedString)> = cx
+            .try_global::<InstalledThemes>()
+            .map(|i| {
+                i.themes
+                    .iter()
+                    .filter(|(_, dark)| !*dark)
+                    .map(|(n, _)| (n.clone().into(), n.clone().into()))
+                    .collect()
+            })
+            .unwrap_or_default();
 
         SettingPage::new("Appearance")
             .icon(Icon::new(IconName::Palette))
-            .groups(vec![SettingGroup::new().title("Theme").items(vec![
-                SettingItem::new("Mode", SettingField::dropdown(appearance_items,
-                    |cx| Settings::get(cx).appearance.label().into(),
-                    |label, cx| Settings::update(cx, |s| s.appearance = Appearance::from_label(&label)),
-                )).description("System follows your OS preference"),
-                SettingItem::new("Dark Theme", SettingField::dropdown(dark_themes,
-                    |cx| Settings::get(cx).dark_theme_name(cx).into(),
-                    |label, cx| Settings::update(cx, |s| s.dark_theme = Some(label.to_string())),
-                )),
-                SettingItem::new("Light Theme", SettingField::dropdown(light_themes,
-                    |cx| Settings::get(cx).light_theme_name(cx).into(),
-                    |label, cx| Settings::update(cx, |s| s.light_theme = Some(label.to_string())),
-                )),
-            ])])
+            .groups(vec![
+                SettingGroup::new().title("Theme").items(vec![
+                    SettingItem::new(
+                        "Mode",
+                        SettingField::dropdown(
+                            appearance_items,
+                            |cx| Settings::get(cx).appearance.label().into(),
+                            |label, cx| {
+                                Settings::update(cx, |s| {
+                                    s.appearance = Appearance::from_label(&label)
+                                })
+                            },
+                        ),
+                    )
+                    .description("System follows your OS preference"),
+                    SettingItem::new(
+                        "Dark Theme",
+                        SettingField::dropdown(
+                            dark_themes,
+                            |cx| Settings::get(cx).dark_theme_name(cx).into(),
+                            |label, cx| {
+                                Settings::update(cx, |s| s.dark_theme = Some(label.to_string()))
+                            },
+                        ),
+                    ),
+                    SettingItem::new(
+                        "Light Theme",
+                        SettingField::dropdown(
+                            light_themes,
+                            |cx| Settings::get(cx).light_theme_name(cx).into(),
+                            |label, cx| {
+                                Settings::update(cx, |s| s.light_theme = Some(label.to_string()))
+                            },
+                        ),
+                    ),
+                ]),
+            ])
     }
 }
 
@@ -596,21 +812,28 @@ fn choice<D: 'static, T: Clone + PartialEq + 'static>(
     draft: Entity<D>,
     set: fn(&mut D, T),
 ) -> impl IntoElement {
-    v_flex().gap_1().child(field_label(label)).child(
-        h_flex()
-            .gap_1()
-            .flex_wrap()
-            .children(options.into_iter().enumerate().map(|(i, (value, text))| {
-                let selected = value == current;
-                let draft = draft.clone();
-                let button = Button::new((id, i)).small().label(text);
-                let button = if selected { button.primary() } else { button.outline() };
-                button.on_click(move |_, window, cx| {
-                    draft.update(cx, |d, _| set(d, value.clone()));
-                    window.refresh();
-                })
-            })),
-    )
+    v_flex()
+        .gap_1()
+        .child(field_label(label))
+        .child(
+            h_flex()
+                .gap_1()
+                .flex_wrap()
+                .children(options.into_iter().enumerate().map(|(i, (value, text))| {
+                    let selected = value == current;
+                    let draft = draft.clone();
+                    let button = Button::new((id, i)).small().label(text);
+                    let button = if selected {
+                        button.primary()
+                    } else {
+                        button.outline()
+                    };
+                    button.on_click(move |_, window, cx| {
+                        draft.update(cx, |d, _| set(d, value.clone()));
+                        window.refresh();
+                    })
+                })),
+        )
 }
 
 /// One line in a settings list: the whole row opens the edit dialog, and
@@ -641,7 +864,13 @@ fn list_row(
             v_flex()
                 .flex_1()
                 .min_w_0()
-                .child(div().text_sm().font_weight(FontWeight::MEDIUM).truncate().child(title))
+                .child(
+                    div()
+                        .text_sm()
+                        .font_weight(FontWeight::MEDIUM)
+                        .truncate()
+                        .child(title),
+                )
                 .child(
                     div()
                         .text_xs()
@@ -701,19 +930,27 @@ fn provider_row(idx: usize, ado: AzureDevOpsConfig, result: Option<String>) -> S
                     ("Error".into(), r.clone().into(), theme.red)
                 }
                 (Some(r), _, _) => (r.clone().into(), r.clone().into(), theme.muted_foreground),
-                (None, Some(Ok(user)), _) => {
-                    ("Connected".into(), format!("Connected as {user}").into(), theme.green)
-                }
+                (None, Some(Ok(user)), _) => (
+                    "Connected".into(),
+                    format!("Connected as {user}").into(),
+                    theme.green,
+                ),
                 (None, Some(Err(e)), _) => ("Error".into(), e.into(), theme.red),
                 (None, None, AuthMethod::DeviceCode) => (
                     "Not supported".into(),
                     "Browser sign-in isn't available yet. Edit and pick another method.".into(),
                     theme.red,
                 ),
-                (None, None, AuthMethod::Pat) if !has_token => {
-                    ("No token".into(), "No token stored. Edit to add one.".into(), theme.red)
-                }
-                (None, None, _) => ("Connecting…".into(), "Connecting…".into(), theme.muted_foreground),
+                (None, None, AuthMethod::Pat) if !has_token => (
+                    "No token".into(),
+                    "No token stored. Edit to add one.".into(),
+                    theme.red,
+                ),
+                (None, None, _) => (
+                    "Connecting…".into(),
+                    "Connecting…".into(),
+                    theme.muted_foreground,
+                ),
             };
 
         let accent = ado

@@ -22,22 +22,40 @@ pub async fn run_stdio() -> anyhow::Result<()> {
         .map(|provider_config| async {
             match provider_config {
                 ProviderConfig::AzureDevOps(ado_config) => {
-                    let pat = credentials::get_token(&ado_config.name).map_err(|e| {
-                        eprintln!("ridgeline-mcp: skipping provider {}: {}", ado_config.name, e);
-                    }).ok()?;
+                    let pat = credentials::get_token(&ado_config.name)
+                        .map_err(|e| {
+                            eprintln!(
+                                "ridgeline-mcp: skipping provider {}: {}",
+                                ado_config.name, e
+                            );
+                        })
+                        .ok()?;
                     let provider = AzureDevOpsProvider::new(ado_config, &pat);
-                    let user = provider.get_current_user().await.map_err(|e| {
-                        eprintln!("ridgeline-mcp: skipping provider {}: {}", ado_config.name, e);
-                    }).ok()?;
-                    eprintln!("ridgeline-mcp: connected to {} ({})", ado_config.name, user.display_name);
+                    let user = provider
+                        .get_current_user()
+                        .await
+                        .map_err(|e| {
+                            eprintln!(
+                                "ridgeline-mcp: skipping provider {}: {}",
+                                ado_config.name, e
+                            );
+                        })
+                        .ok()?;
+                    eprintln!(
+                        "ridgeline-mcp: connected to {} ({})",
+                        ado_config.name, user.display_name
+                    );
                     Some((Arc::new(provider) as Arc<dyn PrProvider>, user))
                 }
             }
         })
         .collect();
 
-    let providers: Vec<(Arc<dyn PrProvider>, UserId)> =
-        futures::future::join_all(init_futs).await.into_iter().flatten().collect();
+    let providers: Vec<(Arc<dyn PrProvider>, UserId)> = futures::future::join_all(init_futs)
+        .await
+        .into_iter()
+        .flatten()
+        .collect();
 
     if providers.is_empty() {
         eprintln!("ridgeline-mcp: no providers configured");

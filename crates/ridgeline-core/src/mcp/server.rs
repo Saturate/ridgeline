@@ -3,7 +3,7 @@ use std::sync::Arc;
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{Implementation, ServerCapabilities, ServerInfo};
-use rmcp::{schemars, tool, tool_handler, tool_router, ServerHandler};
+use rmcp::{ServerHandler, schemars, tool, tool_handler, tool_router};
 
 use crate::polling::poller::Poller;
 use crate::providers::traits::PrProvider;
@@ -11,7 +11,9 @@ use crate::providers::types::UserId;
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct ListPrParams {
-    #[schemars(description = "Filter by provider/tenant name (e.g. 'contoso'). Omit to list from all.")]
+    #[schemars(
+        description = "Filter by provider/tenant name (e.g. 'contoso'). Omit to list from all."
+    )]
     pub provider: Option<String>,
     #[schemars(description = "Filter by project name. Omit to list from all projects.")]
     pub project: Option<String>,
@@ -52,7 +54,9 @@ impl RidgelineMcp {
 
 #[tool_router]
 impl RidgelineMcp {
-    #[tool(description = "List configured Azure DevOps tenants/providers and the authenticated user for each.")]
+    #[tool(
+        description = "List configured Azure DevOps tenants/providers and the authenticated user for each."
+    )]
     async fn list_providers(&self) -> Result<String, String> {
         let info: Vec<serde_json::Value> = self
             .providers
@@ -67,7 +71,9 @@ impl RidgelineMcp {
         serde_json::to_string_pretty(&info).map_err(|e| e.to_string())
     }
 
-    #[tool(description = "List pull requests across configured Azure DevOps organizations. Returns PRs you are reviewing and PRs you authored. Optionally filter by provider/tenant and/or project.")]
+    #[tool(
+        description = "List pull requests across configured Azure DevOps organizations. Returns PRs you are reviewing and PRs you authored. Optionally filter by provider/tenant and/or project."
+    )]
     async fn list_pull_requests(
         &self,
         Parameters(params): Parameters<ListPrParams>,
@@ -111,7 +117,9 @@ impl RidgelineMcp {
         .map_err(|e| e.to_string())
     }
 
-    #[tool(description = "Get detailed information about a specific pull request including policies, diff stats, and build status.")]
+    #[tool(
+        description = "Get detailed information about a specific pull request including policies, diff stats, and build status."
+    )]
     async fn get_pull_request_detail(
         &self,
         Parameters(params): Parameters<GetPrDetailParams>,

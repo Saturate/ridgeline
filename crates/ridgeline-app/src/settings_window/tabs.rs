@@ -1,13 +1,13 @@
+use gpui_kit::component::Disableable as _;
 use gpui_kit::component::{
     Icon, IconName, Sizable as _, WindowExt as _,
-    switch::Switch,
     button::{Button, ButtonVariants as _},
     dialog::{DialogAction, DialogClose, DialogFooter},
     h_flex,
     setting::{SettingGroup, SettingItem, SettingPage},
+    switch::Switch,
     v_flex,
 };
-use gpui_kit::component::Disableable as _;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
@@ -211,7 +211,9 @@ impl SettingsWindow {
                             .small()
                             .icon(Icon::new(IconName::FileText).size_3())
                             .label("Edit as TOML")
-                            .tooltip("Opens config.toml. Saved changes load within a couple of seconds.")
+                            .tooltip(
+                                "Opens config.toml. Saved changes load within a couple of seconds.",
+                            )
                             .on_click(|_, _, _| {
                                 if let Ok(path) = loader::config_path() {
                                     let _ = open::that(path);
@@ -243,8 +245,9 @@ impl SettingsWindow {
             cx.try_global::<AppConfig>()
                 .and_then(|c| c.0.general.tabs.get(idx).cloned())
         });
-        let original: Option<String> =
-            existing.as_ref().and_then(|t| serde_json::to_string(t).ok());
+        let original: Option<String> = existing
+            .as_ref()
+            .and_then(|t| serde_json::to_string(t).ok());
         let can_remove = editing_idx.is_some_and(|idx| {
             cx.try_global::<AppConfig>()
                 .is_some_and(|c| enabled_count_without(&c.0.general.tabs, idx) > 0)
@@ -272,7 +275,11 @@ impl SettingsWindow {
         let name_input = self.tab_name.clone();
         let max_input = self.tab_max_reviewers.clone();
         let prefix_input = self.tab_branch_prefix.clone();
-        let title = if editing_idx.is_some() { "Edit tab" } else { "New tab" };
+        let title = if editing_idx.is_some() {
+            "Edit tab"
+        } else {
+            "New tab"
+        };
 
         window.open_dialog(cx, move |dialog, _, cx| {
             let tab = draft.read(cx).clone();

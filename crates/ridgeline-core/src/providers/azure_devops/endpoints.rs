@@ -18,9 +18,8 @@ impl AzureDevOpsClient {
         reviewer_id: Option<&str>,
         creator_id: Option<&str>,
     ) -> Result<Vec<AdoPullRequest>, ProviderError> {
-        let mut query = format!(
-            "/_apis/git/pullrequests?searchCriteria.status=active&$top=200&{API_VERSION}"
-        );
+        let mut query =
+            format!("/_apis/git/pullrequests?searchCriteria.status=active&$top=200&{API_VERSION}");
 
         if let Some(rid) = reviewer_id {
             query.push_str(&format!("&searchCriteria.reviewerId={rid}"));
@@ -97,9 +96,8 @@ impl AzureDevOpsClient {
         repo: &str,
         pr_id: u64,
     ) -> Result<AdoPullRequest, ProviderError> {
-        let path = format!(
-            "/{project}/_apis/git/repositories/{repo}/pullrequests/{pr_id}?{API_VERSION}"
-        );
+        let path =
+            format!("/{project}/_apis/git/repositories/{repo}/pullrequests/{pr_id}?{API_VERSION}");
         self.get(&path).await
     }
 

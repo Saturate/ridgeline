@@ -24,10 +24,7 @@ impl AzureDevOpsProvider {
         }
     }
 
-    pub fn with_credential(
-        config: &AzureDevOpsConfig,
-        credential: Arc<dyn Credential>,
-    ) -> Self {
+    pub fn with_credential(config: &AzureDevOpsConfig, credential: Arc<dyn Credential>) -> Self {
         Self {
             name: config.name.clone(),
             client: AzureDevOpsClient::with_credential(&config.url, credential),
@@ -93,33 +90,33 @@ impl AzureDevOpsProvider {
         // Extra: configured projects add PRs the user isn't directly on.
         // Only for reviewer queries (team monitoring), not authored queries.
         if reviewer_id.is_some() {
-        for project in &self.projects {
-            let ado_prs = if project.repos.is_empty() {
-                self.client
-                    .list_pull_requests_by_project(&project.name, None, None)
-                    .await?
-            } else {
-                let mut prs = Vec::new();
-                for repo in &project.repos {
-                    let repo_prs = self
-                        .client
-                        .list_pull_requests_by_repo(&project.name, repo, None, None)
-                        .await?;
-                    prs.extend(repo_prs);
-                }
-                prs
-            };
+            for project in &self.projects {
+                let ado_prs = if project.repos.is_empty() {
+                    self.client
+                        .list_pull_requests_by_project(&project.name, None, None)
+                        .await?
+                } else {
+                    let mut prs = Vec::new();
+                    for repo in &project.repos {
+                        let repo_prs = self
+                            .client
+                            .list_pull_requests_by_repo(&project.name, repo, None, None)
+                            .await?;
+                        prs.extend(repo_prs);
+                    }
+                    prs
+                };
 
-            for ado_pr in &ado_prs {
-                if seen_ids.insert(ado_pr.pull_request_id) {
-                    all_prs.push(mapper::map_pull_request(
-                        ado_pr,
-                        &self.name,
-                        self.client.base_url(),
-                    ));
+                for ado_pr in &ado_prs {
+                    if seen_ids.insert(ado_pr.pull_request_id) {
+                        all_prs.push(mapper::map_pull_request(
+                            ado_pr,
+                            &self.name,
+                            self.client.base_url(),
+                        ));
+                    }
                 }
             }
-        }
         }
 
         Ok(all_prs)
@@ -175,7 +172,10 @@ impl PrProvider for AzureDevOpsProvider {
             .get_policy_evaluations(&pr_id.project, pr_id.number)
             .await
         {
-            Ok(evals) => (evals.iter().map(mapper::map_policy_evaluation).collect(), true),
+            Ok(evals) => (
+                evals.iter().map(mapper::map_policy_evaluation).collect(),
+                true,
+            ),
             Err(_) => (Vec::new(), false),
         };
 

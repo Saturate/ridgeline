@@ -15,9 +15,7 @@ pub fn send_with_url(title: &str, body: &str, url: &str) {
             .main_button(MainButton::SingleAction("View PR"));
 
         match n.send() {
-            Ok(
-                NotificationResponse::Click | NotificationResponse::ActionButton(_),
-            ) => {
+            Ok(NotificationResponse::Click | NotificationResponse::ActionButton(_)) => {
                 let _ = open::that(&url);
             }
             _ => {}

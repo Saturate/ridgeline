@@ -66,7 +66,7 @@ fn main() {
     if std::env::args().any(|a| a == "--mcp-stdio") {
         #[cfg(windows)]
         {
-            use windows_sys::Win32::System::Console::{AttachConsole, ATTACH_PARENT_PROCESS};
+            use windows_sys::Win32::System::Console::{ATTACH_PARENT_PROCESS, AttachConsole};
             unsafe {
                 AttachConsole(ATTACH_PARENT_PROCESS);
             }

@@ -102,7 +102,9 @@ mod tests {
 
     #[test]
     fn detects_team_reviewers() {
-        assert!(is_group_reviewer(r"[Integration Platform]\Integration Platform Team"));
+        assert!(is_group_reviewer(
+            r"[Integration Platform]\Integration Platform Team"
+        ));
         assert_eq!(
             group_label(r"[Integration Platform]\Integration Platform Team"),
             "Integration Platform Team"

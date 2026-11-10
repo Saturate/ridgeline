@@ -3,7 +3,11 @@ use chrono::DateTime;
 use super::types::{AdoPolicyEvaluation, AdoPullRequest, AdoReviewer, AdoThread};
 use crate::providers::types::*;
 
-pub fn map_pull_request(ado_pr: &AdoPullRequest, provider_name: &str, base_url: &str) -> PullRequest {
+pub fn map_pull_request(
+    ado_pr: &AdoPullRequest,
+    provider_name: &str,
+    base_url: &str,
+) -> PullRequest {
     let project = &ado_pr.repository.project.name;
     let repo = &ado_pr.repository.name;
 

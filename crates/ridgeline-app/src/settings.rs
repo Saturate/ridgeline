@@ -126,4 +126,3 @@ impl Settings {
         cx.refresh_windows();
     }
 }
-

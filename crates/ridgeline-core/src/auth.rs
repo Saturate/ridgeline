@@ -16,8 +16,7 @@ pub struct PatCredential {
 
 impl PatCredential {
     pub fn new(pat: &str) -> Self {
-        let encoded =
-            base64::engine::general_purpose::STANDARD.encode(format!(":{pat}"));
+        let encoded = base64::engine::general_purpose::STANDARD.encode(format!(":{pat}"));
         Self {
             header: format!("Basic {encoded}"),
         }
@@ -116,9 +115,7 @@ impl DeviceCodeCredential {
 
     /// Initiates the device code flow. Returns the user_code and verification_uri
     /// for the user to complete in their browser. Call `poll_for_token` after.
-    pub async fn start_device_flow(
-        &self,
-    ) -> Result<DeviceCodeResponse, ProviderError> {
+    pub async fn start_device_flow(&self) -> Result<DeviceCodeResponse, ProviderError> {
         let url = format!(
             "https://login.microsoftonline.com/{}/oauth2/v2.0/devicecode",
             self.tenant_id
@@ -141,21 +138,14 @@ impl DeviceCodeCredential {
                 message: format!("device code request failed: {e}"),
             })?;
 
-        let body: serde_json::Value =
-            resp.json().await.map_err(|e| ProviderError::Auth {
-                provider: "entra-id".into(),
-                message: format!("invalid device code response: {e}"),
-            })?;
+        let body: serde_json::Value = resp.json().await.map_err(|e| ProviderError::Auth {
+            provider: "entra-id".into(),
+            message: format!("invalid device code response: {e}"),
+        })?;
 
         Ok(DeviceCodeResponse {
-            device_code: body["device_code"]
-                .as_str()
-                .unwrap_or_default()
-                .to_string(),
-            user_code: body["user_code"]
-                .as_str()
-                .unwrap_or_default()
-                .to_string(),
+            device_code: body["device_code"].as_str().unwrap_or_default().to_string(),
+            user_code: body["user_code"].as_str().unwrap_or_default().to_string(),
             verification_uri: body["verification_uri"]
                 .as_str()
                 .unwrap_or_default()
@@ -166,10 +156,7 @@ impl DeviceCodeCredential {
     }
 
     /// Polls the token endpoint until the user completes browser sign-in.
-    pub async fn poll_for_token(
-        &self,
-        device_code: &str,
-    ) -> Result<String, ProviderError> {
+    pub async fn poll_for_token(&self, device_code: &str) -> Result<String, ProviderError> {
         let url = format!(
             "https://login.microsoftonline.com/{}/oauth2/v2.0/token",
             self.tenant_id
@@ -193,11 +180,10 @@ impl DeviceCodeCredential {
                     message: format!("token poll failed: {e}"),
                 })?;
 
-            let body: serde_json::Value =
-                resp.json().await.map_err(|e| ProviderError::Auth {
-                    provider: "entra-id".into(),
-                    message: format!("invalid token response: {e}"),
-                })?;
+            let body: serde_json::Value = resp.json().await.map_err(|e| ProviderError::Auth {
+                provider: "entra-id".into(),
+                message: format!("invalid token response: {e}"),
+            })?;
 
             if let Some(error) = body["error"].as_str() {
                 match error {
@@ -213,9 +199,7 @@ impl DeviceCodeCredential {
                         });
                     }
                     _ => {
-                        let desc = body["error_description"]
-                            .as_str()
-                            .unwrap_or(error);
+                        let desc = body["error_description"].as_str().unwrap_or(error);
                         return Err(ProviderError::Auth {
                             provider: "entra-id".into(),
                             message: desc.to_string(),
@@ -228,9 +212,7 @@ impl DeviceCodeCredential {
                 .as_str()
                 .unwrap_or_default()
                 .to_string();
-            let refresh_token = body["refresh_token"]
-                .as_str()
-                .map(str::to_string);
+            let refresh_token = body["refresh_token"].as_str().map(str::to_string);
             let expires_in = body["expires_in"].as_u64().unwrap_or(3600);
 
             let mut cache = self.token.write().await;
@@ -257,9 +239,7 @@ impl DeviceCodeCredential {
 
         let refresh_token = {
             let cache = self.token.read().await;
-            cache
-                .as_ref()
-                .and_then(|tc| tc.refresh_token.clone())
+            cache.as_ref().and_then(|tc| tc.refresh_token.clone())
         };
 
         if let Some(refresh) = refresh_token {
@@ -286,11 +266,10 @@ impl DeviceCodeCredential {
                     message: format!("token refresh failed: {e}"),
                 })?;
 
-            let body: serde_json::Value =
-                resp.json().await.map_err(|e| ProviderError::Auth {
-                    provider: "entra-id".into(),
-                    message: format!("invalid refresh response: {e}"),
-                })?;
+            let body: serde_json::Value = resp.json().await.map_err(|e| ProviderError::Auth {
+                provider: "entra-id".into(),
+                message: format!("invalid refresh response: {e}"),
+            })?;
 
             if body["error"].is_string() {
                 return Err(ProviderError::Auth {
@@ -303,9 +282,7 @@ impl DeviceCodeCredential {
                 .as_str()
                 .unwrap_or_default()
                 .to_string();
-            let new_refresh = body["refresh_token"]
-                .as_str()
-                .map(str::to_string);
+            let new_refresh = body["refresh_token"].as_str().map(str::to_string);
             let expires_in = body["expires_in"].as_u64().unwrap_or(3600);
 
             let mut cache = self.token.write().await;

@@ -42,8 +42,7 @@ pub fn ensure_config_dir() -> Result<PathBuf> {
 pub fn save_config(config: &Config) -> Result<()> {
     ensure_config_dir()?;
     let path = config_path()?;
-    let content =
-        toml::to_string_pretty(config).context("failed to serialize config to TOML")?;
+    let content = toml::to_string_pretty(config).context("failed to serialize config to TOML")?;
     std::fs::write(&path, content)
         .with_context(|| format!("failed to write config to {}", path.display()))?;
     Ok(())

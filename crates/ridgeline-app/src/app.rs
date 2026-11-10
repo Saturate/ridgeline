@@ -17,15 +17,19 @@ use gpui_kit::assets::IconName as Lucide;
 use gpui_kit::component::skeleton::Skeleton;
 use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::tooltip::Tooltip;
-use ridgeline_core::config::model::{Config, ProviderConfig, ProviderIndicator, TabConfig, TabDisplay, TabSource, WaitingOn};
+use ridgeline_core::CachedBuildStatus;
+use ridgeline_core::config::model::{
+    Config, ProviderConfig, ProviderIndicator, TabConfig, TabDisplay, TabSource, WaitingOn,
+};
 use ridgeline_core::notifications::tracker::ChangeTracker;
 use ridgeline_core::polling::poller::Poller;
 use ridgeline_core::providers::traits::PrProvider;
 use ridgeline_core::providers::types::*;
 use ridgeline_core::util::time::relative_time;
-use ridgeline_core::CachedBuildStatus;
 
-use crate::pr_row::{group_label, initials, is_group_reviewer, parse_conventional_commit, parse_hex_color};
+use crate::pr_row::{
+    group_label, initials, is_group_reviewer, parse_conventional_commit, parse_hex_color,
+};
 use crate::settings_window::SettingsWindow;
 use crate::*;
 
@@ -78,11 +82,7 @@ impl Ridgeline {
         let _ = cx.subscribe_in(&search, window, |this, _, ev: &InputEvent, _window, cx| {
             if matches!(ev, InputEvent::Change) {
                 // Read text from the search entity next render
-                this.search_text = this
-                    .search
-                    .read(cx)
-                    .value()
-                    .to_string();
+                this.search_text = this.search.read(cx).value().to_string();
                 cx.notify();
             }
         });
@@ -105,13 +105,17 @@ impl Ridgeline {
         .detach();
         // A stat every couple of seconds is cheaper than a filesystem-watcher
         // dependency, and config edits don't need to land faster than that.
-        cx.spawn(async move |this, cx| loop {
-            cx.background_executor().timer(Duration::from_secs(2)).await;
-            let alive = this
-                .update(cx, |_, cx| crate::settings_window::reload_config_if_changed(cx))
-                .is_ok();
-            if !alive {
-                break;
+        cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor().timer(Duration::from_secs(2)).await;
+                let alive = this
+                    .update(cx, |_, cx| {
+                        crate::settings_window::reload_config_if_changed(cx)
+                    })
+                    .is_ok();
+                if !alive {
+                    break;
+                }
             }
         })
         .detach();
@@ -189,10 +193,8 @@ impl Ridgeline {
         self.retry_task = None;
         let config = self.config.clone();
         self.init_task = Some(cx.spawn(async move |this, cx| {
-            let providers_result = io(async move {
-                Ok(ridgeline_core::init_providers(&config).await)
-            })
-            .await;
+            let providers_result =
+                io(async move { Ok(ridgeline_core::init_providers(&config).await) }).await;
 
             let results = match providers_result {
                 Ok(results) => results,
@@ -247,7 +249,10 @@ impl Ridgeline {
                         cx.try_global::<crate::settings_window::ProviderHealth>()
                     {
                         for (name, state) in &previous.0 {
-                            health.0.entry(name.clone()).or_insert_with(|| state.clone());
+                            health
+                                .0
+                                .entry(name.clone())
+                                .or_insert_with(|| state.clone());
                         }
                     }
                 }
@@ -286,7 +291,9 @@ impl Ridgeline {
     fn schedule_retry(&mut self, cx: &mut Context<Self>) {
         let secs = self.config.general.refresh_interval_secs.max(10);
         self.retry_task = Some(cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(Duration::from_secs(secs)).await;
+            cx.background_executor()
+                .timer(Duration::from_secs(secs))
+                .await;
             this.update(cx, |this, cx| this.start_init(false, cx)).ok();
         }));
     }
@@ -474,16 +481,18 @@ impl Ridgeline {
                 // old (possibly 10 minute) sleep or restarting the poll.
                 let mut waited = 0u64;
                 loop {
-                    let Ok(interval) = this
-                        .update(cx, |this, _| this.config.general.refresh_interval_secs.max(10))
-                    else {
+                    let Ok(interval) = this.update(cx, |this, _| {
+                        this.config.general.refresh_interval_secs.max(10)
+                    }) else {
                         return;
                     };
                     if waited >= interval {
                         break;
                     }
                     let step = (interval - waited).min(5);
-                    cx.background_executor().timer(Duration::from_secs(step)).await;
+                    cx.background_executor()
+                        .timer(Duration::from_secs(step))
+                        .await;
                     waited += step;
                 }
             }
@@ -511,9 +520,18 @@ impl Ridgeline {
         SettingsWindow::open(cx.entity().downgrade(), cx);
     }
 
-    fn open_in_browser(&mut self, _: &OpenInBrowser, _window: &mut Window, _cx: &mut Context<Self>) {
+    fn open_in_browser(
+        &mut self,
+        _: &OpenInBrowser,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) {
         if let Some(pr_id) = &self.selected_pr {
-            if let Some((provider, _)) = self.providers.iter().find(|(p, _)| p.name() == pr_id.provider) {
+            if let Some((provider, _)) = self
+                .providers
+                .iter()
+                .find(|(p, _)| p.name() == pr_id.provider)
+            {
                 let url = provider.web_url(pr_id);
                 let _ = open::that(&url);
             }
@@ -560,7 +578,12 @@ impl Ridgeline {
                 let detail = io({
                     let provider = provider.clone();
                     let pr_id = pr_id.clone();
-                    async move { provider.get_detail(&pr_id).await.map_err(|e| anyhow::anyhow!("{e}")) }
+                    async move {
+                        provider
+                            .get_detail(&pr_id)
+                            .await
+                            .map_err(|e| anyhow::anyhow!("{e}"))
+                    }
                 })
                 .await;
 
@@ -578,7 +601,12 @@ impl Ridgeline {
     }
 
     fn enabled_tabs(&self) -> Vec<&TabConfig> {
-        self.config.general.tabs.iter().filter(|t| t.enabled).collect()
+        self.config
+            .general
+            .tabs
+            .iter()
+            .filter(|t| t.enabled)
+            .collect()
     }
 
     fn prs_for_active_tab(&self) -> Vec<&PullRequest> {
@@ -614,7 +642,12 @@ impl Ridgeline {
             .filter(|pr| {
                 // Thread counts only exist for authored PRs, so the filter
                 // only means something there (the dialog hides it elsewhere).
-                if let Some(waiting_on) = tab.filter.waiting_on.as_ref().filter(|_| tab.source == TabSource::Authored) {
+                if let Some(waiting_on) = tab
+                    .filter
+                    .waiting_on
+                    .as_ref()
+                    .filter(|_| tab.source == TabSource::Authored)
+                {
                     let on_author = pr.is_waiting_on_author();
                     if on_author != (*waiting_on == WaitingOn::Author) {
                         return false;
@@ -636,7 +669,10 @@ impl Ridgeline {
                 if !tab.filter.cc_types.is_empty() {
                     let kind = parse_conventional_commit(&pr.title).map(|cc| cc.kind);
                     let wanted = kind.is_some_and(|k| {
-                        tab.filter.cc_types.iter().any(|t| t.eq_ignore_ascii_case(k))
+                        tab.filter
+                            .cc_types
+                            .iter()
+                            .any(|t| t.eq_ignore_ascii_case(k))
                     });
                     if !wanted {
                         return false;
@@ -671,15 +707,12 @@ impl Ridgeline {
     fn render_title_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         TitleBar::new()
             .child(
-                h_flex()
-                    .items_center()
-                    .gap_2()
-                    .child(
-                        div()
-                            .text_sm()
-                            .font_weight(FontWeight::BOLD)
-                            .child(format!("Ridgeline v{}", env!("CARGO_PKG_VERSION"))),
-                    ),
+                h_flex().items_center().gap_2().child(
+                    div()
+                        .text_sm()
+                        .font_weight(FontWeight::BOLD)
+                        .child(format!("Ridgeline v{}", env!("CARGO_PKG_VERSION"))),
+                ),
             )
             .child(
                 h_flex()
@@ -711,10 +744,7 @@ impl Ridgeline {
 
     fn render_main_content(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let has_detail = self.selected_pr.is_some();
-        let mut row = h_flex()
-            .flex_1()
-            .min_h_0()
-            .child(self.render_pr_list(cx));
+        let mut row = h_flex().flex_1().min_h_0().child(self.render_pr_list(cx));
 
         if has_detail {
             if let Some(panel) = self.render_detail_panel(cx) {
@@ -849,12 +879,19 @@ impl Ridgeline {
         if !self.search_text.trim().is_empty() {
             return (
                 "No matches",
-                Some(format!("Nothing in this tab matches \"{}\".", self.search_text)),
+                Some(format!(
+                    "Nothing in this tab matches \"{}\".",
+                    self.search_text
+                )),
             );
         }
         // waiting_on only applies to authored tabs (see prs_for_tab).
         let detail = match tab.map(|t| {
-            let waiting_on = t.filter.waiting_on.as_ref().filter(|_| t.source == TabSource::Authored);
+            let waiting_on = t
+                .filter
+                .waiting_on
+                .as_ref()
+                .filter(|_| t.source == TabSource::Authored);
             (&t.source, waiting_on)
         }) {
             Some((_, Some(&WaitingOn::Author))) => "Nothing needs you right now.",
@@ -947,7 +984,10 @@ impl Ridgeline {
             .parse_conventional_commits
             .then(|| parse_conventional_commit(&pr.title))
             .flatten();
-        let title = cc.as_ref().map_or(pr.title.as_str(), |c| c.description).to_string();
+        let title = cc
+            .as_ref()
+            .map_or(pr.title.as_str(), |c| c.description)
+            .to_string();
         let repo_label = if general.show_project_name {
             format!("{}/{}", pr.repository.project, pr.repository.name)
         } else {
@@ -1043,7 +1083,11 @@ impl Ridgeline {
                     .min_w_0()
                     .gap_1()
                     .child(Icon::new(Lucide::GitBranch).size(px(12.)))
-                    .child(div().truncate().child(short_branch(&pr.source_branch).to_string()))
+                    .child(
+                        div()
+                            .truncate()
+                            .child(short_branch(&pr.source_branch).to_string()),
+                    )
                     .tooltip({
                         let text = format!(
                             "{} → {}",
@@ -1056,19 +1100,25 @@ impl Ridgeline {
 
         let mut right = h_flex().flex_none().items_center().gap_2();
         if is_reviewing {
-            if pr.reviewers.iter().any(|r| r.vote == Vote::WaitingForAuthor) {
+            if pr
+                .reviewers
+                .iter()
+                .any(|r| r.vote == Vote::WaitingForAuthor)
+            {
                 right = right.child(outline_badge(
                     Lucide::Clock,
                     "Waiting for author".into(),
                     theme.yellow,
                 ));
             }
-            right = right.child(h_flex().gap(px(2.)).children(
-                pr.reviewers
-                    .iter()
-                    .enumerate()
-                    .map(|(i, r)| vote_chip(r, format!("{row_id}-vote-{i}"), theme)),
-            ));
+            right = right.child(
+                h_flex().gap(px(2.)).children(
+                    pr.reviewers
+                        .iter()
+                        .enumerate()
+                        .map(|(i, r)| vote_chip(r, format!("{row_id}-vote-{i}"), theme)),
+                ),
+            );
         } else {
             right = right.child(status_summary(pr, theme));
         }
@@ -1149,7 +1199,10 @@ impl Ridgeline {
         } else {
             theme.muted_foreground
         };
-        let created = pr.created_at.with_timezone(&chrono::Local).format("%Y-%m-%d %H:%M");
+        let created = pr
+            .created_at
+            .with_timezone(&chrono::Local)
+            .format("%Y-%m-%d %H:%M");
         let tooltip = if is_reviewing {
             format!("Waiting for review since {created}")
         } else {
@@ -1164,8 +1217,12 @@ impl Ridgeline {
             .text_xs()
             .text_color(color)
             .child(
-                Icon::new(if is_reviewing { Lucide::Hourglass } else { Lucide::Clock })
-                    .size(px(12.)),
+                Icon::new(if is_reviewing {
+                    Lucide::Hourglass
+                } else {
+                    Lucide::Clock
+                })
+                .size(px(12.)),
             )
             .child(relative_time(&pr.created_at))
             .tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
@@ -1213,10 +1270,7 @@ impl Ridgeline {
                             .text_color(theme.muted_foreground)
                             .child(format!("by {}", pr.author.display_name))
                             .child("·")
-                            .child(format!(
-                                "{}/{}",
-                                pr.repository.project, pr.repository.name
-                            ))
+                            .child(format!("{}/{}", pr.repository.project, pr.repository.name))
                             .child("·")
                             .child(format!(
                                 "{} → {}",
@@ -1232,11 +1286,7 @@ impl Ridgeline {
                             .child(format!("Created {}", relative_time(&pr.created_at)))
                             .when(pr.is_draft, |el| {
                                 el.child(
-                                    div()
-                                        .px_1()
-                                        .rounded(px(4.))
-                                        .bg(theme.muted)
-                                        .child("Draft"),
+                                    div().px_1().rounded(px(4.)).bg(theme.muted).child("Draft"),
                                 )
                             })
                             .when_some(pr.merge_status.as_ref(), |el, status| {
@@ -1520,7 +1570,13 @@ fn skeleton_row(i: usize, cx: &App) -> impl IntoElement {
                         .child(Skeleton::new().secondary().h_4().w(px(36.)).rounded_sm())
                         .child(Skeleton::new().secondary().h_4().w(px(72.)).rounded_sm()),
                 )
-                .child(Skeleton::new().secondary().h_3().w(relative(title_w * 0.9)).rounded_sm()),
+                .child(
+                    Skeleton::new()
+                        .secondary()
+                        .h_3()
+                        .w(relative(title_w * 0.9))
+                        .rounded_sm(),
+                ),
         )
         .child(
             h_flex()
@@ -1608,7 +1664,11 @@ fn vote_chip(reviewer: &Reviewer, id: String, theme: ThemeRef) -> impl IntoEleme
     let tooltip = format!(
         "{}{}",
         if group { group_label(name) } else { name },
-        if reviewer.is_required { " (required)" } else { "" }
+        if reviewer.is_required {
+            " (required)"
+        } else {
+            ""
+        }
     );
 
     h_flex()
@@ -1622,7 +1682,9 @@ fn vote_chip(reviewer: &Reviewer, id: String, theme: ThemeRef) -> impl IntoEleme
         .font_weight(FontWeight::MEDIUM)
         .bg(bg)
         .text_color(fg)
-        .when(reviewer.is_required, |el| el.border_1().border_color(fg.opacity(0.3)))
+        .when(reviewer.is_required, |el| {
+            el.border_1().border_color(fg.opacity(0.3))
+        })
         .child(Icon::new(icon).size(px(12.)))
         .map(|el| {
             if group {
@@ -1638,7 +1700,8 @@ fn vote_chip(reviewer: &Reviewer, id: String, theme: ThemeRef) -> impl IntoEleme
 fn status_summary(pr: &PullRequest, theme: ThemeRef) -> AnyElement {
     let total = pr.reviewers.len();
     if total == 0 {
-        return outline_badge(Lucide::UserX, "No reviewers".into(), theme.warning).into_any_element();
+        return outline_badge(Lucide::UserX, "No reviewers".into(), theme.warning)
+            .into_any_element();
     }
     let count = |f: fn(&Vote) -> bool| pr.reviewers.iter().filter(|r| f(&r.vote)).count();
     let approved = count(|v| matches!(v, Vote::Approved | Vote::ApprovedWithSuggestions));
@@ -1678,11 +1741,19 @@ fn open_threads_badge(count: u32, theme: ThemeRef) -> Option<impl IntoElement> {
     if count == 0 {
         return None;
     }
-    let label = if count == 1 { "1 comment".to_string() } else { format!("{count} comments") };
+    let label = if count == 1 {
+        "1 comment".to_string()
+    } else {
+        format!("{count} comments")
+    };
     Some(
         div()
             .id("open-threads")
-            .child(outline_badge(Lucide::MessageSquare, label.into(), theme.warning))
+            .child(outline_badge(
+                Lucide::MessageSquare,
+                label.into(),
+                theme.warning,
+            ))
             .tooltip(|window, cx| {
                 Tooltip::new("Unresolved comment threads from reviewers").build(window, cx)
             }),
@@ -1692,14 +1763,21 @@ fn open_threads_badge(count: u32, theme: ThemeRef) -> Option<impl IntoElement> {
 fn merge_status_badge(status: Option<&MergeStatus>, theme: ThemeRef) -> Option<impl IntoElement> {
     let (icon, label, tip) = match status? {
         MergeStatus::Conflicts => (Lucide::GitMerge, "Conflicts", "This PR has merge conflicts"),
-        MergeStatus::RejectedByPolicy => {
-            (Lucide::TriangleAlert, "Policy blocked", "Blocked by branch policy")
-        }
+        MergeStatus::RejectedByPolicy => (
+            Lucide::TriangleAlert,
+            "Policy blocked",
+            "Blocked by branch policy",
+        ),
         _ => return None,
     };
     Some(
-        solid_badge(Some(icon), label.into(), theme.danger, theme.danger_foreground)
-            .tooltip(move |window, cx| Tooltip::new(tip).build(window, cx)),
+        solid_badge(
+            Some(icon),
+            label.into(),
+            theme.danger,
+            theme.danger_foreground,
+        )
+        .tooltip(move |window, cx| Tooltip::new(tip).build(window, cx)),
     )
 }
 

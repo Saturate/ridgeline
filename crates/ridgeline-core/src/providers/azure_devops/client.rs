@@ -99,9 +99,7 @@ impl AzureDevOpsClient {
             }
 
             return response.json::<T>().await.map_err(|e| {
-                ProviderError::Deserialize(format!(
-                    "failed to parse response from {url}: {e}"
-                ))
+                ProviderError::Deserialize(format!("failed to parse response from {url}: {e}"))
             });
         }
 

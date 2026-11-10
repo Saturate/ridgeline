@@ -9,10 +9,7 @@ pub enum ProviderError {
     Http(#[from] reqwest::Error),
 
     #[error("authentication failed for provider '{provider}': {message}")]
-    Auth {
-        provider: String,
-        message: String,
-    },
+    Auth { provider: String, message: String },
 
     #[error("API error from {provider}: {status} {message}")]
     Api {

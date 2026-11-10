@@ -47,16 +47,8 @@ pub fn open(app: &mut Ridgeline, window: &mut Window, cx: &mut Context<Ridgeline
                 ];
 
                 let command = Command::new(&palette)
-                    .group(
-                        CommandGroup::new()
-                            .label("Commands")
-                            .items(command_items),
-                    )
-                    .group(
-                        CommandGroup::new()
-                            .label("Pull Requests")
-                            .items(pr_items),
-                    )
+                    .group(CommandGroup::new().label("Commands").items(command_items))
+                    .group(CommandGroup::new().label("Pull Requests").items(pr_items))
                     .bordered(false)
                     .max_h(px(400.))
                     .placeholder("Search commands and PRs...")
