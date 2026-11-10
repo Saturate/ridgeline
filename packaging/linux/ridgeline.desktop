@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Ridgeline
+Comment=Pull request dashboard for Azure DevOps
+Exec=ridgeline
+Icon=ridgeline
+Categories=Development;
+Terminal=false

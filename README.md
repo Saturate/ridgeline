@@ -2,14 +2,14 @@
 
 Cross-tenant, cross-project pull request monitor for Azure DevOps. See all your PRs in one place — across organizations, projects, and repositories.
 
-Built with [Tauri v2](https://tauri.app) (Rust backend) and React + [shadcn/ui](https://ui.shadcn.com) (frontend).
+Native Rust app built with [GPUI](https://www.gpui.rs) via [GPUI Kit](https://crates.io/crates/gpui-kit).
 
 ![Ridgeline screenshot](docs/screenshot.png)
 
 ## Features
 
 - **Cross-tenant overview** — connect multiple Azure DevOps organizations
-- **Reviewing / Authored tabs** — separate views for PRs you're reviewing vs. PRs you created
+- **Configurable tabs** — Reviewing, Your turn (conflicts, failed builds, open comments, or a reviewer waiting on you) and Waiting for review by default; add your own with filters
 - **Vote summary** — see approval progress, rejections, and "waiting for author" at a glance
 - **Filters** — hide drafts, filter by provider, search across titles/repos/branches
 - **Native notifications** — configurable OS notifications for new PRs, vote changes, and build failures
@@ -34,7 +34,7 @@ winget install Saturate.Ridgeline
 
 ### Linux
 
-Download `.deb`, `.rpm`, or `.AppImage` from the [Releases page](https://github.com/Saturate/ridgeline/releases).
+Download the `.tar.gz` from the [Releases page](https://github.com/Saturate/ridgeline/releases) and put `ridgeline` on your `PATH`.
 
 ### Manual download
 
@@ -55,9 +55,10 @@ Config is stored at `~/Library/Application Support/ridgeline/` (macOS) or `~/.co
 ## Development
 
 ```bash
-pnpm install
-pnpm tauri dev
+cargo run -p ridgeline-app
 ```
+
+`scripts/package.sh <target> <version>` builds the same release packages CI does.
 
 ## Release
 

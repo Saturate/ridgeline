@@ -1,3 +1,7 @@
+// Release builds on Windows would otherwise open a console next to the window.
+// --mcp-stdio still works: MCP clients start us with piped handles.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 mod app;
 mod assets;
 mod log;
