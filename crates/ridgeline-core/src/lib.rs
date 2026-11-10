@@ -134,9 +134,14 @@ pub async fn enrich_build_status(
                 // only when the policy fetch worked: then it means the repo
                 // has no build policy, and refetching every poll would cost
                 // two requests per PR for nothing.
+                // ADO creates a PR's policy evaluations a little after it opens,
+                // and until then the list is empty as well. Later pushes reuse
+                // the existing evaluations (they show as queued), so only young
+                // PRs need the wait before "empty" can mean "no build policy".
+                let settled_in = chrono::Utc::now() - pr.created_at > chrono::Duration::minutes(10);
                 let reusable = match build_status {
                     BuildStatus::Succeeded => true,
-                    BuildStatus::NotStarted => detail.policies_loaded,
+                    BuildStatus::NotStarted => detail.policies_loaded && settled_in,
                     BuildStatus::InProgress | BuildStatus::Failed => false,
                 };
                 if !commit_id.is_empty() && reusable {

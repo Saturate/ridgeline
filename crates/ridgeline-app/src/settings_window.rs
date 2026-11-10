@@ -362,6 +362,11 @@ impl SettingsWindow {
                                         let _ = credentials::store_token(original, &old_token);
                                         return false;
                                     }
+                                    // The first delete can fail (permissions); don't
+                                    // leave a stray plaintext token under the old name.
+                                    if !original.eq_ignore_ascii_case(&name) {
+                                        let _ = credentials::delete_token(original);
+                                    }
                                 }
                             }
                             let ProviderConfig::AzureDevOps(ado) = &mut config.0.providers[idx];

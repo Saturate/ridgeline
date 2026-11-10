@@ -66,9 +66,34 @@ impl ChangeTracker {
     }
 
     pub fn detect_changes(&mut self, prs: &[PullRequest]) -> Vec<Change> {
+        self.detect_changes_partial(prs, &HashSet::new())
+    }
+
+    /// Like `detect_changes`, but PRs from `unreachable` providers that are
+    /// missing from `prs` are kept as known instead of reported gone. A failed
+    /// query says nothing about whether those PRs still exist, and forgetting
+    /// them would re-announce each one as new once the provider answers again.
+    pub fn detect_changes_partial(
+        &mut self,
+        prs: &[PullRequest],
+        unreachable: &HashSet<String>,
+    ) -> Vec<Change> {
         let mut changes = Vec::new();
 
-        let current_keys: HashSet<String> = prs.iter().map(|pr| pr_key(&pr.id)).collect();
+        let mut current_keys: HashSet<String> = prs.iter().map(|pr| pr_key(&pr.id)).collect();
+        let held: Vec<String> = self
+            .known_prs
+            .iter()
+            .filter(|key| !current_keys.contains(*key))
+            .filter(|key| {
+                self.pr_meta
+                    .get(*key)
+                    .and_then(|m| m.pr_id.as_ref())
+                    .is_some_and(|id| unreachable.contains(&id.provider))
+            })
+            .cloned()
+            .collect();
+        current_keys.extend(held);
 
         // Detect disappeared PRs (were known, now gone)
         for key in &self.known_prs {
@@ -314,5 +339,86 @@ impl Change {
                 format!("\"{title}\" in {repo} was closed")
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::providers::types::{Repository, User};
+
+    fn tracker() -> ChangeTracker {
+        // No state_path: tests must not touch the user's tracker file.
+        ChangeTracker {
+            known_prs: HashSet::new(),
+            pr_meta: HashMap::new(),
+            vote_states: HashMap::new(),
+            state_path: None,
+        }
+    }
+
+    fn pr(provider: &str, number: u64) -> PullRequest {
+        PullRequest {
+            id: PrId {
+                provider: provider.into(),
+                project: "proj".into(),
+                repository: "repo".into(),
+                number,
+            },
+            title: format!("PR {number}"),
+            description: None,
+            status: PrStatus::Active,
+            is_draft: false,
+            created_at: chrono::Utc::now(),
+            author: User {
+                id: "a".into(),
+                display_name: "Author".into(),
+                unique_name: None,
+            },
+            source_branch: "feature".into(),
+            target_branch: "main".into(),
+            reviewers: Vec::new(),
+            repository: Repository {
+                name: "repo".into(),
+                project: "proj".into(),
+            },
+            labels: Vec::new(),
+            merge_status: None,
+            build_status: None,
+            source_commit_id: None,
+            web_url: String::new(),
+            open_threads: 0,
+        }
+    }
+
+    fn new_pr_count(changes: &[Change]) -> usize {
+        changes
+            .iter()
+            .filter(|c| matches!(c, Change::NewPr { .. }))
+            .count()
+    }
+
+    #[test]
+    fn unreachable_provider_keeps_its_prs_known() {
+        let mut t = tracker();
+        t.detect_changes(&[pr("a", 1), pr("b", 2)]);
+
+        // Provider "a" failed this poll: its PR is missing but must not be
+        // forgotten or reported gone.
+        let unreachable: HashSet<String> = ["a".to_string()].into();
+        let changes = t.detect_changes_partial(&[pr("b", 2)], &unreachable);
+        assert!(changes.is_empty());
+
+        // When "a" answers again its PR is not announced as new.
+        let changes = t.detect_changes(&[pr("a", 1), pr("b", 2)]);
+        assert_eq!(new_pr_count(&changes), 0);
+    }
+
+    #[test]
+    fn reachable_provider_still_reports_disappeared_prs() {
+        let mut t = tracker();
+        t.detect_changes(&[pr("a", 1), pr("b", 2)]);
+        let changes = t.detect_changes_partial(&[pr("b", 2)], &HashSet::new());
+        assert!(changes.iter().any(|c| matches!(c, Change::Disappeared { .. })));
     }
 }

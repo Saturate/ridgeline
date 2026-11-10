@@ -209,7 +209,9 @@ impl Ridgeline {
             };
 
             let mut health = crate::settings_window::ProviderHealth::default();
-            let mut failures: Vec<String> = Vec::new();
+            // (provider name, error); names may contain ": ", so they're kept
+            // separate rather than parsed back out of a formatted string.
+            let mut failures: Vec<(String, String)> = Vec::new();
             let mut providers: Vec<(Arc<dyn PrProvider>, UserId)> = Vec::new();
             for init in results {
                 match init.result {
@@ -218,7 +220,7 @@ impl Ridgeline {
                         providers.push((provider, user));
                     }
                     Err(e) => {
-                        failures.push(format!("{}: {e}", init.name));
+                        failures.push((init.name.clone(), e.clone()));
                         health.0.insert(init.name, Err(e));
                     }
                 }
@@ -231,14 +233,13 @@ impl Ridgeline {
                     // reconnect (a blip during refresh) keeps its working
                     // connection and isn't reported offline.
                     let mut still_offline = Vec::new();
-                    for failure in failures.drain(..) {
-                        let name = failure.split(": ").next().unwrap_or_default();
+                    for (name, error) in failures.drain(..) {
                         match this.providers.iter().find(|(p, _)| p.name() == name) {
                             Some(existing) => {
-                                health.0.remove(name);
+                                health.0.remove(&name);
                                 providers.push(existing.clone());
                             }
-                            None => still_offline.push(failure),
+                            None => still_offline.push((name, error)),
                         }
                     }
                     failures = still_offline;
@@ -252,7 +253,9 @@ impl Ridgeline {
                 }
                 cx.set_global(health);
                 cx.refresh_windows();
-                this.offline = failures.clone();
+                let failure_text: Vec<String> =
+                    failures.iter().map(|(n, e)| format!("{n}: {e}")).collect();
+                this.offline = failure_text.clone();
 
                 if this.config.providers.is_empty() {
                     this.providers.clear();
@@ -268,7 +271,7 @@ impl Ridgeline {
                     this.start_polling(cx);
                 } else {
                     this.providers.clear();
-                    this.phase = LoadPhase::Failed(failures.join("\n"));
+                    this.phase = LoadPhase::Failed(failure_text.join("\n"));
                     this.refreshing = false;
                     this.schedule_retry(cx);
                 }
@@ -417,7 +420,15 @@ impl Ridgeline {
                                 .chain(result.authored.iter())
                                 .cloned()
                                 .collect();
-                            let changes = this.change_tracker.detect_changes(&all_prs);
+                            let unreachable: std::collections::HashSet<String> = result
+                                .failed_reviewing
+                                .iter()
+                                .chain(result.failed_authored.iter())
+                                .cloned()
+                                .collect();
+                            let changes = this
+                                .change_tracker
+                                .detect_changes_partial(&all_prs, &unreachable);
                             if !first_poll && this.config.general.notifications_enabled {
                                 let notif_config = this.config.general.notifications.clone();
                                 for change in &changes {
