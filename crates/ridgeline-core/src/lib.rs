@@ -8,6 +8,8 @@ pub mod util;
 
 use std::sync::Arc;
 
+use futures::StreamExt as _;
+
 use config::model::{AuthMethod, NotificationConfig, ProviderConfig};
 use notifications::tracker::Change;
 use providers::azure_devops::AzureDevOpsProvider;
@@ -127,9 +129,10 @@ pub async fn enrich_build_status(
         if let Some((provider, _)) = provider {
             if let Ok(detail) = provider.get_detail(&pr.id).await {
                 let build_status = derive_build_status(&detail.policies);
-                // A running build finishes without a new commit, so only
-                // settled results are safe to reuse.
-                if !commit_id.is_empty() && build_status != BuildStatus::InProgress {
+                // Running builds finish and failed ones get re-queued without a
+                // new commit, so only results that can't change are reused.
+                let settled = matches!(build_status, BuildStatus::Succeeded | BuildStatus::NotStarted);
+                if !commit_id.is_empty() && settled {
                     cache.insert(
                         pr.id.to_string(),
                         CachedBuildStatus {
@@ -145,24 +148,55 @@ pub async fn enrich_build_status(
 }
 
 /// Threads get resolved and added without new commits, so this is fetched
-/// every poll rather than cached.
+/// every poll rather than cached. When a fetch fails the previous poll's count
+/// is kept, so a 429 or timeout doesn't move a PR out of "Your turn".
 pub async fn enrich_open_threads(
     prs: &mut [PullRequest],
     providers: &[(Arc<dyn PrProvider>, UserId)],
-) {
-    let counts = futures::future::join_all(prs.iter().map(|pr| async move {
-        let (provider, _) = providers.iter().find(|(p, _)| p.name() == pr.id.provider)?;
-        provider.count_open_threads(pr).await.ok()
-    }))
-    .await;
+    previous: &std::collections::HashMap<providers::types::PrId, u32>,
+) -> Vec<polling::error::PollError> {
+    // Collected up front: a stream over a borrowing iterator trips rustc's
+    // higher-ranked Send check once this future is spawned.
+    let futs: Vec<_> = prs
+        .iter()
+        .map(|pr| {
+            let provider = providers
+                .iter()
+                .find(|(p, _)| p.name() == pr.id.provider)
+                .map(|(p, _)| p.clone());
+            let pr = pr.clone();
+            async move {
+                match provider {
+                    Some(provider) => provider.count_open_threads(&pr).await,
+                    None => Ok(0),
+                }
+            }
+        })
+        .collect();
+    // Capped so a long authored list doesn't fire every request at once.
+    let counts = futures::stream::iter(futs)
+        .buffered(8)
+        .collect::<Vec<_>>()
+        .await;
 
+    let mut errors = Vec::new();
     for (pr, count) in prs.iter_mut().zip(counts) {
-        if let Some(count) = count {
-            pr.open_threads = count;
+        match count {
+            Ok(count) => pr.open_threads = count,
+            Err(e) => {
+                pr.open_threads = previous.get(&pr.id).copied().unwrap_or(0);
+                errors.push(polling::error::PollError {
+                    provider: pr.id.provider.clone(),
+                    kind: polling::error::PollErrorKind::Unknown,
+                    message: format!("comments for #{}: {e}", pr.id.number),
+                });
+            }
         }
     }
+    errors
 }
 
+#[derive(Clone)]
 pub struct CachedBuildStatus {
     pub source_commit_id: String,
     pub status: BuildStatus,

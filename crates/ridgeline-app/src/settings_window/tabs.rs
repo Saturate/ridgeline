@@ -96,7 +96,13 @@ fn tab_row(idx: usize, count: usize, tab: TabConfig) -> SettingItem {
                     .disabled(idx == 0)
                     .on_click(move |_, _, cx| {
                         cx.stop_propagation();
-                        update_tabs(cx, |tabs| tabs.swap(idx, idx - 1));
+                        update_tabs(cx, |tabs| {
+                            // idx is from the last render; a reload from disk
+                            // can shrink the list before the click lands.
+                            if idx > 0 && idx < tabs.len() {
+                                tabs.swap(idx, idx - 1);
+                            }
+                        });
                     }),
             )
             .child(
@@ -108,7 +114,11 @@ fn tab_row(idx: usize, count: usize, tab: TabConfig) -> SettingItem {
                     .disabled(idx + 1 >= count)
                     .on_click(move |_, _, cx| {
                         cx.stop_propagation();
-                        update_tabs(cx, |tabs| tabs.swap(idx, idx + 1));
+                        update_tabs(cx, |tabs| {
+                            if idx + 1 < tabs.len() {
+                                tabs.swap(idx, idx + 1);
+                            }
+                        });
                     }),
             )
             .into_any_element();
@@ -123,6 +133,11 @@ fn tab_row(idx: usize, count: usize, tab: TabConfig) -> SettingItem {
                     .on_click(move |checked, _, cx| {
                         let checked = *checked;
                         update_tabs(cx, |tabs| {
+                            // Keep one tab on; the main window has nothing to
+                            // show otherwise.
+                            if !checked && enabled_count_without(tabs, idx) == 0 {
+                                return;
+                            }
                             if let Some(t) = tabs.get_mut(idx) {
                                 t.enabled = checked;
                             }
@@ -145,6 +160,20 @@ fn tab_row(idx: usize, count: usize, tab: TabConfig) -> SettingItem {
         )
         .when(!enabled, |row| row.opacity(0.6))
     })
+}
+
+fn enabled_count_without(tabs: &[TabConfig], idx: usize) -> usize {
+    tabs.iter()
+        .enumerate()
+        .filter(|(i, t)| *i != idx && t.enabled)
+        .count()
+}
+
+/// Dialogs remember the tab they opened with instead of its position, since
+/// config.toml can be reloaded (and reordered) while the dialog is open.
+fn find_tab(tabs: &[TabConfig], original: &str) -> Option<usize> {
+    tabs.iter()
+        .position(|t| serde_json::to_string(t).ok().as_deref() == Some(original))
 }
 
 fn new_tab() -> TabConfig {
@@ -210,12 +239,17 @@ impl SettingsWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let mut initial = editing_idx
-            .and_then(|idx| {
-                cx.try_global::<AppConfig>()
-                    .and_then(|c| c.0.general.tabs.get(idx).cloned())
-            })
-            .unwrap_or_else(new_tab);
+        let existing = editing_idx.and_then(|idx| {
+            cx.try_global::<AppConfig>()
+                .and_then(|c| c.0.general.tabs.get(idx).cloned())
+        });
+        let original: Option<String> =
+            existing.as_ref().and_then(|t| serde_json::to_string(t).ok());
+        let can_remove = editing_idx.is_some_and(|idx| {
+            cx.try_global::<AppConfig>()
+                .is_some_and(|c| enabled_count_without(&c.0.general.tabs, idx) > 0)
+        });
+        let mut initial = existing.unwrap_or_else(new_tab);
         // "Show" and "no filter" behave the same; collapse them so one button lights up.
         if initial.filter.drafts == Some(DraftFilter::Show) {
             initial.filter.drafts = None;
@@ -234,11 +268,6 @@ impl SettingsWindow {
         self.tab_branch_prefix
             .update(cx, |s, cx| s.set_value(&prefix_text, window, cx));
 
-        // The main window has nothing to show without a tab.
-        let tab_count = cx
-            .try_global::<AppConfig>()
-            .map(|c| c.0.general.tabs.len())
-            .unwrap_or(0);
         let draft = cx.new(|_| initial);
         let name_input = self.tab_name.clone();
         let max_input = self.tab_max_reviewers.clone();
@@ -309,7 +338,10 @@ impl SettingsWindow {
                             ),
                         ))
                         .child(pair(
-                            choice(
+                            // Comment threads are only fetched for your own PRs,
+                            // so "waiting on" is only accurate there.
+                            if tab.source == TabSource::Authored {
+                                choice(
                                 "Waiting on",
                                 "tab-waiting",
                                 vec![
@@ -320,7 +352,11 @@ impl SettingsWindow {
                                 tab.filter.waiting_on.clone(),
                                 draft.clone(),
                                 |t, v| t.filter.waiting_on = v,
-                            ),
+                            )
+                                .into_any_element()
+                            } else {
+                                div().into_any_element()
+                            },
                             choice(
                                 "Drafts",
                                 "tab-drafts",
@@ -351,7 +387,7 @@ impl SettingsWindow {
                 )
                 .footer(
                     DialogFooter::new()
-                        .when_some(editing_idx.filter(|_| tab_count > 1), |footer, idx| {
+                        .when_some(original.clone().filter(|_| can_remove), |footer, original| {
                             footer.child(
                                 h_flex().flex_1().child(
                                     Button::new("tab-remove")
@@ -359,7 +395,7 @@ impl SettingsWindow {
                                         .label("Remove tab")
                                         .on_click(move |_, window, cx| {
                                             update_tabs(cx, |tabs| {
-                                                if idx < tabs.len() {
+                                                if let Some(idx) = find_tab(tabs, &original) {
                                                     tabs.remove(idx);
                                                 }
                                             });
@@ -378,6 +414,7 @@ impl SettingsWindow {
                         ))),
                 )
                 .on_ok({
+                    let original = original.clone();
                     let draft = draft.clone();
                     let name_input = name_input.clone();
                     let max_input = max_input.clone();
@@ -402,10 +439,19 @@ impl SettingsWindow {
                         tab.label = label;
                         tab.filter.max_reviewers = max_reviewers;
                         tab.filter.branch_prefix = (!prefix.is_empty()).then_some(prefix);
+                        if tab.source != TabSource::Authored {
+                            tab.filter.waiting_on = None;
+                        }
 
-                        update_tabs(cx, |tabs| match editing_idx {
-                            Some(idx) if idx < tabs.len() => tabs[idx] = tab,
-                            _ => tabs.push(tab),
+                        update_tabs(cx, |tabs| match &original {
+                            Some(original) => {
+                                // Gone from config.toml since the dialog opened:
+                                // drop the edit rather than overwrite another tab.
+                                if let Some(idx) = find_tab(tabs, original) {
+                                    tabs[idx] = tab;
+                                }
+                            }
+                            None => tabs.push(tab),
                         });
                         true
                     }

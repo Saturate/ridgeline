@@ -63,9 +63,17 @@ jobs:
         id: version
         shell: bash
         run: |
-          VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1 | tr -d '\r')
+          # Homebrew builds its URLs from the tag, the assets are named from
+          # Cargo.toml; a mismatch would publish files nobody can find.
+          if [[ "$GITHUB_REF" == refs/tags/* && "$GITHUB_REF_NAME" != "v$VERSION" ]]; then
+            echo "::error::tag $GITHUB_REF_NAME doesn't match Cargo.toml version $VERSION"
+            exit 1
+          fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
+      # Preinstalled on current images; this is a no-op there and covers
+      # images that drop it.
       - name: Install Inno Setup
         if: runner.os == 'Windows'
         run: choco install innosetup -y --no-progress
@@ -73,7 +81,7 @@ jobs:
       - name: Package
         shell: bash
         env:
-          ISCC: C:\Program Files (x86)\Inno Setup 6\ISCC.exe
+          ISCC: C:/Program Files (x86)/Inno Setup 6/ISCC.exe
         run: scripts/package.sh ${{ matrix.target }} ${{ steps.version.outputs.version }}
 
       - uses: actions/upload-artifact@v4

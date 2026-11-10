@@ -12,7 +12,9 @@ AppPublisher=Saturate
 DefaultDirName={autopf}\Ridgeline
 DefaultGroupName=Ridgeline
 DisableProgramGroupPage=yes
-PrivilegesRequiredOverridesAllowed=dialog
+; Per-user like the Tauri NSIS installer it replaces, so upgrades land in the
+; same scope and no admin prompt appears.
+PrivilegesRequired=lowest
 SetupIconFile={#IconFile}
 UninstallDisplayIcon={app}\ridgeline.exe
 ArchitecturesAllowed=x64compatible
@@ -33,3 +35,19 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; Flags: unchecked
 
 [Run]
 Filename: "{app}\ridgeline.exe"; Description: "{cm:LaunchProgram,Ridgeline}"; Flags: nowait postinstall skipifsilent
+
+[Code]
+// Versions up to 0.7 were Tauri NSIS installs with their own uninstall entry.
+// Remove that silently first so upgrading doesn't leave two copies installed.
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  Uninstaller: String;
+  ResultCode: Integer;
+begin
+  Result := '';
+  if RegQueryStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\Ridgeline',
+    'UninstallString', Uninstaller) then
+  begin
+    Exec(RemoveQuotes(Uninstaller), '/S', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  end;
+end;

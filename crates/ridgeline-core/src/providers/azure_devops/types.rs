@@ -126,6 +126,8 @@ pub struct AdoThread {
     pub id: u64,
     pub status: Option<String>,
     pub comments: Option<Vec<AdoComment>>,
+    #[serde(default)]
+    pub is_deleted: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -135,4 +137,6 @@ pub struct AdoComment {
     pub content: Option<String>,
     pub author: AdoIdentity,
     pub comment_type: Option<String>,
+    #[serde(default)]
+    pub is_deleted: bool,
 }

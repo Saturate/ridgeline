@@ -36,13 +36,20 @@ case "$TARGET" in
     mkdir -p "$STAGE"
     cp -R "$APP" "$STAGE/"
     ln -s /Applications "$STAGE/Applications"
-    hdiutil create -volname "Ridgeline" -srcfolder "$STAGE" -ov -format UDZO \
-      "$DIST/Ridgeline_${VERSION}_${ARCH}.dmg"
+    # hdiutil intermittently fails with "Resource busy" on CI runners.
+    for attempt in 1 2 3; do
+      if hdiutil create -volname "Ridgeline" -srcfolder "$STAGE" -ov -format UDZO \
+        "$DIST/Ridgeline_${VERSION}_${ARCH}.dmg"; then
+        break
+      fi
+      [ "$attempt" = 3 ] && exit 1
+      sleep 5
+    done
     rm -rf "$STAGE"
     ;;
 
   *-pc-windows-msvc)
-    # ISCC ships with the GitHub Windows runner images.
+    # build.yml points ISCC at the Inno Setup install; locally it's on PATH.
     ISCC="${ISCC:-iscc}"
     "$ISCC" //Q \
       "//DAppVersion=$VERSION" \

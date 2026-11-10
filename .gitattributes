@@ -1,0 +1,2 @@
+# package.sh runs under Git Bash on the Windows runner, which chokes on CRLF.
+*.sh text eol=lf

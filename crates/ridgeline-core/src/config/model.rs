@@ -116,7 +116,11 @@ fn default_tabs() -> Vec<TabConfig> {
             source: TabSource::Reviewing,
             display: TabDisplay::Reviewing,
             enabled: true,
-            filter: TabFilter::default(),
+            // Drafts aren't ready for review; the Tauri app hid them by default too.
+            filter: TabFilter {
+                drafts: Some(DraftFilter::Hide),
+                ..TabFilter::default()
+            },
         },
         TabConfig {
             label: "Your turn".into(),
@@ -135,6 +139,7 @@ fn default_tabs() -> Vec<TabConfig> {
             enabled: true,
             filter: TabFilter {
                 waiting_on: Some(WaitingOn::Reviewers),
+                drafts: Some(DraftFilter::Hide),
                 ..TabFilter::default()
             },
         },

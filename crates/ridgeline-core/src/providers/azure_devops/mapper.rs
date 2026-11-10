@@ -118,8 +118,16 @@ pub fn map_policy_evaluation(eval: &AdoPolicyEvaluation) -> PolicyStatus {
 /// System threads (vote changes, pushes, policy updates) have no status, and
 /// notes the author left for reviewers aren't something the author needs to act on.
 pub fn is_open_reviewer_thread(thread: &AdoThread, author_id: &str) -> bool {
+    // Deleted threads keep their "active" status, so check the flag first.
+    if thread.is_deleted {
+        return false;
+    }
     let open = matches!(thread.status.as_deref(), Some("active" | "pending"));
-    let Some(first) = thread.comments.as_ref().and_then(|c| c.first()) else {
+    let Some(first) = thread
+        .comments
+        .as_ref()
+        .and_then(|c| c.iter().find(|c| !c.is_deleted))
+    else {
         return false;
     };
     let is_system = first.comment_type.as_deref() == Some("system");
@@ -131,4 +139,47 @@ fn strip_refs_prefix(refname: &str) -> String {
         .strip_prefix("refs/heads/")
         .unwrap_or(refname)
         .to_string()
+}
+
+#[cfg(test)]
+mod thread_tests {
+    use super::*;
+
+    fn thread(json: &str) -> AdoThread {
+        serde_json::from_str(json).unwrap()
+    }
+
+    const AUTHOR: &str = "author-id";
+
+    #[test]
+    fn counts_active_reviewer_threads_only() {
+        let reviewer = thread(
+            r#"{"id":1,"status":"active","comments":[{"id":1,"author":{"id":"rev","displayName":"R"},"commentType":"text"}]}"#,
+        );
+        let own_note = thread(
+            r#"{"id":2,"status":"active","comments":[{"id":1,"author":{"id":"author-id","displayName":"A"},"commentType":"text"}]}"#,
+        );
+        let system = thread(
+            r#"{"id":3,"comments":[{"id":1,"author":{"id":"rev","displayName":"R"},"commentType":"system"}]}"#,
+        );
+        let resolved = thread(
+            r#"{"id":4,"status":"fixed","comments":[{"id":1,"author":{"id":"rev","displayName":"R"},"commentType":"text"}]}"#,
+        );
+        assert!(is_open_reviewer_thread(&reviewer, AUTHOR));
+        assert!(!is_open_reviewer_thread(&own_note, AUTHOR));
+        assert!(!is_open_reviewer_thread(&system, AUTHOR));
+        assert!(!is_open_reviewer_thread(&resolved, AUTHOR));
+    }
+
+    #[test]
+    fn deleted_threads_and_comments_are_ignored() {
+        let deleted_thread = thread(
+            r#"{"id":1,"status":"active","isDeleted":true,"comments":[{"id":1,"author":{"id":"rev","displayName":"R"},"commentType":"text"}]}"#,
+        );
+        let only_deleted_comment = thread(
+            r#"{"id":2,"status":"active","comments":[{"id":1,"author":{"id":"rev","displayName":"R"},"commentType":"text","isDeleted":true}]}"#,
+        );
+        assert!(!is_open_reviewer_thread(&deleted_thread, AUTHOR));
+        assert!(!is_open_reviewer_thread(&only_deleted_comment, AUTHOR));
+    }
 }

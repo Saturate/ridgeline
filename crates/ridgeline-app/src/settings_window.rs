@@ -16,7 +16,7 @@ use gpui_kit::component::{
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
-use ridgeline_core::config::model::{AuthMethod, AzureDevOpsConfig, Config, ProviderConfig};
+use ridgeline_core::config::model::{AuthMethod, AzureDevOpsConfig, Config, ProviderConfig, ProviderIndicator};
 use ridgeline_core::config::{credentials, loader};
 use ridgeline_core::providers::azure_devops::AzureDevOpsProvider;
 use ridgeline_core::providers::traits::PrProvider;
@@ -71,6 +71,11 @@ pub fn reload_config_if_changed(cx: &mut App) {
 #[derive(Clone, Default)]
 pub struct ProviderHealth(pub HashMap<String, Result<String, String>>);
 impl Global for ProviderHealth {}
+
+/// Bumped whenever a token is written, so the main window reconnects with it.
+#[derive(Default)]
+pub struct CredentialsVersion(pub u64);
+impl Global for CredentialsVersion {}
 
 #[derive(Clone, Default)]
 struct ConnectionResults(HashMap<String, String>);
@@ -183,6 +188,9 @@ impl SettingsWindow {
             ),
         };
         let has_token = existing.is_some() && credentials::get_token(&name).is_ok();
+        // Entries are found by name when saving, not by position: config.toml
+        // can be reloaded from disk while the dialog is open.
+        let original_name: Option<String> = existing.as_ref().map(|a| a.name.clone());
 
         self.edit_name.update(cx, |s, cx| s.set_value(&name, window, cx));
         self.edit_url.update(cx, |s, cx| s.set_value(&url, window, cx));
@@ -274,14 +282,14 @@ impl SettingsWindow {
                 .child(fields)
                 .footer(
                     DialogFooter::new()
-                        .when_some(editing_idx, |footer, idx| {
+                        .when_some(original_name.clone(), |footer, original| {
                             footer.child(
                                 h_flex().flex_1().child(
                                     Button::new("remove-provider")
                                         .ghost()
                                         .label("Remove provider")
                                         .on_click(move |_, window, cx| {
-                                            remove_provider(idx, cx);
+                                            remove_provider(&original, cx);
                                             window.close_dialog(cx);
                                         }),
                                 ),
@@ -295,6 +303,7 @@ impl SettingsWindow {
                         ))),
                 )
                 .on_ok({
+                    let original_name = original_name.clone();
                     let draft = draft.clone();
                     let name_input = name_input.clone();
                     let url_input = url_input.clone();
@@ -316,19 +325,36 @@ impl SettingsWindow {
                         let color = (!color.is_empty()).then_some(color);
 
                         let config = cx.global_mut::<AppConfig>();
-                        if let Some(idx) = editing_idx {
-                            if let Some(ProviderConfig::AzureDevOps(ado)) =
-                                config.0.providers.get_mut(idx)
-                            {
-                                let old_name = ado.name.clone();
-                                ado.name = name.clone();
-                                ado.url = url;
-                                ado.color = color;
-                                ado.auth = auth.clone();
-                                if old_name != name {
-                                    if let Ok(old_token) = credentials::get_token(&old_name) {
-                                        let _ = credentials::store_token(&name, &old_token);
-                                        let _ = credentials::delete_token(&old_name);
+                        let position = |config: &AppConfig, wanted: &str| {
+                            config.0.providers.iter().position(|p| {
+                                let ProviderConfig::AzureDevOps(a) = p;
+                                a.name == wanted
+                            })
+                        };
+                        // Tokens, health and PR ids are all keyed by name, so two
+                        // providers can't share one.
+                        if original_name.as_deref() != Some(name.as_str())
+                            && position(config, &name).is_some()
+                        {
+                            return false;
+                        }
+
+                        let mut token_changed = false;
+                        if let Some(original) = &original_name {
+                            let Some(idx) = position(config, original) else {
+                                // Removed from config.toml while the dialog was open.
+                                return true;
+                            };
+                            let ProviderConfig::AzureDevOps(ado) = &mut config.0.providers[idx];
+                            ado.name = name.clone();
+                            ado.url = url;
+                            ado.color = color;
+                            ado.auth = auth.clone();
+                            if *original != name {
+                                if let Ok(old_token) = credentials::get_token(original) {
+                                    // Only drop the old file once the copy exists.
+                                    if credentials::store_token(&name, &old_token).is_ok() {
+                                        let _ = credentials::delete_token(original);
                                     }
                                 }
                             }
@@ -345,11 +371,19 @@ impl SettingsWindow {
                         }
 
                         if auth == AuthMethod::Pat && !pat.is_empty() {
-                            let _ = credentials::store_token(&name, &pat);
+                            token_changed = credentials::store_token(&name, &pat).is_ok();
                         }
 
                         let _ = loader::save_config(&config.0);
-                        cx.global_mut::<ConnectionResults>().0.remove(&name);
+                        let results = &mut cx.global_mut::<ConnectionResults>().0;
+                        results.remove(&name);
+                        if let Some(original) = &original_name {
+                            results.remove(original);
+                        }
+                        if token_changed {
+                            let version = cx.default_global::<CredentialsVersion>();
+                            version.0 += 1;
+                        }
                         cx.refresh_windows();
                         true
                     }
@@ -433,6 +467,28 @@ impl SettingsWindow {
                         |cx| cx.try_global::<AppConfig>().map(|c| c.0.general.parse_conventional_commits).unwrap_or(false),
                         |v, cx| { let c = cx.global_mut::<AppConfig>(); c.0.general.parse_conventional_commits = v; let _ = loader::save_config(&c.0); },
                     )),
+                    SettingItem::new("Provider indicator", SettingField::dropdown(
+                        vec![
+                            ("Border".into(), "Color stripe".into()),
+                            ("Badge".into(), "Name badge".into()),
+                            ("Off".into(), "Off".into()),
+                        ],
+                        |cx| match cx.try_global::<AppConfig>().map(|c| c.0.general.provider_indicator.clone()) {
+                            Some(ProviderIndicator::Badge) => "Name badge".into(),
+                            Some(ProviderIndicator::Off) => "Off".into(),
+                            _ => "Color stripe".into(),
+                        },
+                        |label, cx| {
+                            let indicator = match label.as_ref() {
+                                "Name badge" | "Badge" => ProviderIndicator::Badge,
+                                "Off" => ProviderIndicator::Off,
+                                _ => ProviderIndicator::Border,
+                            };
+                            let c = cx.global_mut::<AppConfig>();
+                            c.0.general.provider_indicator = indicator;
+                            let _ = loader::save_config(&c.0);
+                        },
+                    )).description("How each PR row shows which organization it's from"),
                 ]),
             ])
     }
@@ -465,6 +521,18 @@ impl SettingsWindow {
                     |cx| cx.try_global::<AppConfig>().map(|c| c.0.general.notifications.completed).unwrap_or(true),
                     |v, cx| { let c = cx.global_mut::<AppConfig>(); c.0.general.notifications.completed = v; let _ = loader::save_config(&c.0); },
                 )),
+                SettingItem::new("Test", SettingField::render(|options, _, _| {
+                    Button::new("test-notification")
+                        .outline()
+                        .with_size(options.size())
+                        .label("Send test notification")
+                        .on_click(|_, _, _| {
+                            ridgeline_core::notifications::sender::send_simple(
+                                "Ridgeline",
+                                "Notifications are working.",
+                            );
+                        })
+                })).description("Check that your OS lets Ridgeline show notifications"),
             ])])
     }
 
@@ -714,15 +782,18 @@ fn provider_row(idx: usize, ado: AzureDevOpsConfig, result: Option<String>) -> S
     })
 }
 
-fn remove_provider(idx: usize, cx: &mut App) {
+fn remove_provider(name: &str, cx: &mut App) {
     let config = cx.global_mut::<AppConfig>();
-    if idx < config.0.providers.len() {
-        let ProviderConfig::AzureDevOps(ado) = &config.0.providers[idx];
-        let _ = credentials::delete_token(&ado.name);
-        config.0.providers.remove(idx);
-        let _ = loader::save_config(&config.0);
-        cx.refresh_windows();
-    }
+    let Some(idx) = config.0.providers.iter().position(|p| {
+        let ProviderConfig::AzureDevOps(a) = p;
+        a.name == name
+    }) else {
+        return;
+    };
+    let _ = credentials::delete_token(name);
+    config.0.providers.remove(idx);
+    let _ = loader::save_config(&config.0);
+    cx.refresh_windows();
 }
 
 fn test_connection(ado: &AzureDevOpsConfig, cx: &mut App) {

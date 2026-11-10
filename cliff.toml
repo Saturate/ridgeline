@@ -35,9 +35,13 @@ body = """
 {%- endfor %}
 {%- endif %}
 {%- endfor %}
+
 """
 footer = ""
-trim = true
+# With trim on, each release body lost its trailing newline and the next
+# "## [x.y.z]" heading was glued to the previous release's last bullet, which
+# broke the changelog extraction in build.yml.
+trim = false
 
 [git]
 conventional_commits = true

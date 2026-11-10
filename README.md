@@ -9,9 +9,9 @@ Native Rust app built with [GPUI](https://www.gpui.rs) via [GPUI Kit](https://cr
 ## Features
 
 - **Cross-tenant overview** — connect multiple Azure DevOps organizations
-- **Configurable tabs** — Reviewing, Your turn (conflicts, failed builds, open comments, or a reviewer waiting on you) and Waiting for review by default; add your own with filters
+- **Configurable tabs**: Reviewing, Your turn (conflicts, failed builds, open comments, or a reviewer waiting on you) and Waiting for review by default; add your own with filters
 - **Vote summary** — see approval progress, rejections, and "waiting for author" at a glance
-- **Filters** — hide drafts, filter by provider, search across titles/repos/branches
+- **Filters**: per-tab filters for drafts, reviewer count, branch prefix and commit type, plus search across titles, authors, repos, branches and PR numbers
 - **Native notifications** — configurable OS notifications for new PRs, vote changes, and build failures
 - **Background polling** — automatic refresh with configurable interval
 - **Dark mode** — follows system preference
