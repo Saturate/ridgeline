@@ -57,6 +57,13 @@ pub struct PullRequest {
 impl PullRequest {
     /// True when the author has something to fix: merge conflicts, a failing
     /// build, unresolved reviewer comments, or a reviewer pushed back.
+    /// Whether `user_id` is a reviewer on this PR and has approved it.
+    pub fn is_approved_by(&self, user_id: &str) -> bool {
+        self.reviewers.iter().any(|r| {
+            r.user.id == user_id && matches!(r.vote, Vote::Approved | Vote::ApprovedWithSuggestions)
+        })
+    }
+
     pub fn is_waiting_on_author(&self) -> bool {
         let pushed_back = self
             .reviewers
@@ -265,6 +272,26 @@ mod tests {
         assert!(!pr(vec![reviewer(Vote::Approved), reviewer(Vote::NoVote)]).is_waiting_on_author());
         assert!(!pr(vec![reviewer(Vote::Approved)]).is_waiting_on_author());
         assert!(!pr(Vec::new()).is_waiting_on_author());
+    }
+
+    fn voted(id: &str, vote: Vote) -> Reviewer {
+        let mut r = reviewer(vote);
+        r.user.id = id.into();
+        r
+    }
+
+    #[test]
+    fn approved_by_matches_only_your_own_approval() {
+        let p = pr(vec![
+            voted("me", Vote::ApprovedWithSuggestions),
+            voted("other", Vote::NoVote),
+        ]);
+        assert!(p.is_approved_by("me"));
+        assert!(!p.is_approved_by("other"));
+        assert!(!p.is_approved_by("nobody"));
+
+        let waiting = pr(vec![voted("me", Vote::WaitingForAuthor)]);
+        assert!(!waiting.is_approved_by("me"));
     }
 
     #[test]

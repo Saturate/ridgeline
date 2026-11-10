@@ -117,8 +117,10 @@ fn default_tabs() -> Vec<TabConfig> {
             display: TabDisplay::Reviewing,
             enabled: true,
             // Drafts aren't ready for review; the Tauri app hid them by default too.
+            // Once you've approved, the PR isn't waiting on you anymore.
             filter: TabFilter {
                 drafts: Some(DraftFilter::Hide),
+                hide_approved_by_me: true,
                 ..TabFilter::default()
             },
         },
@@ -224,6 +226,11 @@ pub struct TabFilter {
     pub branch_prefix: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cc_types: Vec<String>,
+    /// Hide PRs where your own vote is an approval (with or without
+    /// suggestions). Team votes don't count: a team approving on your behalf
+    /// doesn't mean you looked at it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub hide_approved_by_me: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

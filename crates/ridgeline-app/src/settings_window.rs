@@ -740,8 +740,7 @@ impl SettingsWindow {
 
         SettingPage::new("Appearance")
             .icon(Icon::new(IconName::Palette))
-            .groups(vec![
-                SettingGroup::new().title("Theme").items(vec![
+            .groups(vec![SettingGroup::new().title("Theme").items(vec![
                     SettingItem::new(
                         "Mode",
                         SettingField::dropdown(
@@ -775,8 +774,7 @@ impl SettingsWindow {
                             },
                         ),
                     ),
-                ]),
-            ])
+                ])])
     }
 }
 

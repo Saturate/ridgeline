@@ -53,6 +53,9 @@ fn summary(tab: &TabConfig) -> String {
         Some(DraftFilter::Only) => parts.push("drafts only".into()),
         _ => {}
     }
+    if tab.filter.hide_approved_by_me {
+        parts.push("hides your approvals".into());
+    }
     if let Some(max) = tab.filter.max_reviewers {
         parts.push(format!("max {max} reviewers"));
     }
@@ -380,6 +383,17 @@ impl SettingsWindow {
                         .child(pair(
                             labeled_field("Max reviewers", &max_input, "Empty for any, 0 for unassigned"),
                             labeled_field("Branch prefix", &prefix_input, "e.g. feature/"),
+                        ))
+                        .child(pair(
+                            choice(
+                                "PRs you approved",
+                                "tab-approved",
+                                vec![(false, "Show"), (true, "Hide")],
+                                tab.filter.hide_approved_by_me,
+                                draft.clone(),
+                                |t, v| t.filter.hide_approved_by_me = v,
+                            ),
+                            div(),
                         ))
                         .child(
                             v_flex()
