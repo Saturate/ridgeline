@@ -13,7 +13,11 @@ use gpui_kit::component::{
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
-use ridgeline_core::config::model::{Config, TabConfig, TabSource};
+use gpui_kit::assets::IconName as Lucide;
+use gpui_kit::component::skeleton::Skeleton;
+use gpui_kit::component::spinner::Spinner;
+use gpui_kit::component::tooltip::Tooltip;
+use ridgeline_core::config::model::{Config, ProviderConfig, ProviderIndicator, TabConfig, TabDisplay, TabSource, WaitingOn};
 use ridgeline_core::notifications::tracker::ChangeTracker;
 use ridgeline_core::polling::poller::Poller;
 use ridgeline_core::providers::traits::PrProvider;
@@ -21,10 +25,20 @@ use ridgeline_core::providers::types::*;
 use ridgeline_core::util::time::relative_time;
 use ridgeline_core::CachedBuildStatus;
 
+use crate::pr_row::{group_label, initials, is_group_reviewer, parse_conventional_commit, parse_hex_color};
 use crate::settings_window::SettingsWindow;
 use crate::*;
 
 const DETAIL_PANEL_WIDTH: f32 = 380.;
+
+#[derive(Clone, PartialEq)]
+enum LoadPhase {
+    Connecting,
+    FirstPoll,
+    Ready,
+    NoProviders,
+    Failed(String),
+}
 
 pub struct Ridgeline {
     focus: FocusHandle,
@@ -43,6 +57,8 @@ pub struct Ridgeline {
 
     last_poll: Option<chrono::DateTime<chrono::Utc>>,
     status_message: Option<String>,
+    phase: LoadPhase,
+    refreshing: bool,
 
     change_tracker: ChangeTracker,
     build_cache: HashMap<String, CachedBuildStatus>,
@@ -74,6 +90,21 @@ impl Ridgeline {
         });
 
         cx.set_global(crate::settings_window::AppConfig(config.clone()));
+        crate::settings_window::remember_config_mtime(cx);
+        cx.observe_global::<crate::settings_window::AppConfig>(Self::apply_config)
+            .detach();
+        // A stat every couple of seconds is cheaper than a filesystem-watcher
+        // dependency, and config edits don't need to land faster than that.
+        cx.spawn(async move |this, cx| loop {
+            cx.background_executor().timer(Duration::from_secs(2)).await;
+            let alive = this
+                .update(cx, |_, cx| crate::settings_window::reload_config_if_changed(cx))
+                .is_ok();
+            if !alive {
+                break;
+            }
+        })
+        .detach();
 
         let mut this = Self {
             focus: cx.focus_handle(),
@@ -88,7 +119,9 @@ impl Ridgeline {
             search,
             search_text: String::new(),
             last_poll: None,
-            status_message: Some("Connecting to providers...".into()),
+            status_message: None,
+            phase: LoadPhase::Connecting,
+            refreshing: false,
             change_tracker: ChangeTracker::new(),
             build_cache: HashMap::new(),
             init_task: None,
@@ -98,6 +131,37 @@ impl Ridgeline {
 
         this.start_init(cx);
         this
+    }
+
+    /// Settings edits land in the `AppConfig` global; mirror them here so the
+    /// main window doesn't need a restart to see new tabs or providers.
+    fn apply_config(&mut self, cx: &mut Context<Self>) {
+        let Some(new) = cx
+            .try_global::<crate::settings_window::AppConfig>()
+            .map(|c| c.0.clone())
+        else {
+            return;
+        };
+        let providers_changed = serde_json::to_string(&new.providers).ok()
+            != serde_json::to_string(&self.config.providers).ok();
+        let interval_changed =
+            new.general.refresh_interval_secs != self.config.general.refresh_interval_secs;
+        self.config = new;
+
+        let tab_count = self.enabled_tabs().len();
+        if self.active_tab >= tab_count {
+            self.active_tab = tab_count.saturating_sub(1);
+        }
+
+        if providers_changed {
+            self.poll_task = None;
+            self.build_cache.clear();
+            self.phase = LoadPhase::Connecting;
+            self.start_init(cx);
+        } else if interval_changed && !self.providers.is_empty() {
+            self.start_polling(cx);
+        }
+        cx.notify();
     }
 
     fn start_init(&mut self, cx: &mut Context<Self>) {
@@ -110,20 +174,35 @@ impl Ridgeline {
 
             match providers_result {
                 Ok(results) => {
-                    let providers: Vec<(Arc<dyn PrProvider>, UserId)> = results
-                        .iter()
-                        .map(|(p, u, _)| (p.clone(), u.clone()))
-                        .collect();
-                    let names: Vec<String> = results.iter().map(|(_, _, n)| n.clone()).collect();
+                    let mut health = crate::settings_window::ProviderHealth::default();
+                    let mut failures = Vec::new();
+                    let mut providers: Vec<(Arc<dyn PrProvider>, UserId)> = Vec::new();
+                    for init in results {
+                        match init.result {
+                            Ok((provider, user)) => {
+                                health.0.insert(init.name, Ok(user.display_name.clone()));
+                                providers.push((provider, user));
+                            }
+                            Err(e) => {
+                                failures.push(format!("{}: {e}", init.name));
+                                health.0.insert(init.name, Err(e));
+                            }
+                        }
+                    }
 
                     this.update(cx, |this, cx| {
+                        cx.set_global(health);
+                        cx.refresh_windows();
                         this.providers = providers;
-                        if names.is_empty() {
-                            this.status_message =
-                                Some("No providers configured. Open Settings to add one.".into());
+                        if this.config.providers.is_empty() {
+                            this.phase = LoadPhase::NoProviders;
+                        } else if this.providers.is_empty() {
+                            this.phase = LoadPhase::Failed(failures.join("\n"));
                         } else {
-                            this.status_message =
-                                Some(format!("Connected: {}", names.join(", ")));
+                            if !failures.is_empty() {
+                                this.status_message = Some(failures.join(" · "));
+                            }
+                            this.phase = LoadPhase::FirstPoll;
                             this.start_polling(cx);
                         }
                         cx.notify();
@@ -132,7 +211,7 @@ impl Ridgeline {
                 }
                 Err(e) => {
                     this.update(cx, |this, cx| {
-                        this.status_message = Some(format!("Init failed: {e}"));
+                        this.phase = LoadPhase::Failed(e.to_string());
                         cx.notify();
                     })
                     .ok();
@@ -170,6 +249,7 @@ impl Ridgeline {
                             &mut cache,
                         )
                         .await;
+                        ridgeline_core::enrich_open_threads(&mut result.authored, &providers).await;
                         Ok((result, cache))
                     }
                 })
@@ -205,12 +285,34 @@ impl Ridgeline {
                                 }
                             }
 
+                            let mut health = cx
+                                .try_global::<crate::settings_window::ProviderHealth>()
+                                .cloned()
+                                .unwrap_or_default();
+                            for (provider, user) in &this.providers {
+                                let error = result
+                                    .errors
+                                    .iter()
+                                    .find(|e| e.provider == provider.name());
+                                health.0.insert(
+                                    provider.name().to_string(),
+                                    match error {
+                                        Some(e) => Err(e.message.clone()),
+                                        None => Ok(user.display_name.clone()),
+                                    },
+                                );
+                            }
+                            cx.set_global(health);
+                            cx.refresh_windows();
+
                             this.reviewing = result.reviewing;
                             this.authored = result.authored;
                             this.errors = result.errors;
                             this.build_cache = cache;
                             this.last_poll = Some(chrono::Utc::now());
                             this.status_message = None;
+                            this.phase = LoadPhase::Ready;
+                            this.refreshing = false;
                             first_poll = false;
                             cx.notify();
                         })
@@ -218,7 +320,14 @@ impl Ridgeline {
                     }
                     Err(e) => {
                         this.update(cx, |this, cx| {
-                            this.status_message = Some(format!("Poll error: {e}"));
+                            this.refreshing = false;
+                            // Keep showing the last good data; only an empty
+                            // window turns into an error screen.
+                            if this.phase == LoadPhase::Ready {
+                                this.status_message = Some(format!("Poll error: {e}"));
+                            } else {
+                                this.phase = LoadPhase::Failed(e.to_string());
+                            }
                             cx.notify();
                         })
                         .ok();
@@ -238,10 +347,17 @@ impl Ridgeline {
     }
 
     fn refresh(&mut self, _: &Refresh, _window: &mut Window, cx: &mut Context<Self>) {
-        self.poll_task = None;
-        self.status_message = Some("Refreshing...".into());
+        if self.providers.is_empty() {
+            self.start_init(cx);
+        } else {
+            self.poll_task = None;
+            self.refreshing = true;
+            if matches!(self.phase, LoadPhase::Failed(_)) {
+                self.phase = LoadPhase::FirstPoll;
+            }
+            self.start_polling(cx);
+        }
         cx.notify();
-        self.start_polling(cx);
     }
 
     fn open_settings(&mut self, _: &OpenSettings, _window: &mut Window, cx: &mut Context<Self>) {
@@ -323,7 +439,10 @@ impl Ridgeline {
         let Some(tab) = tabs.get(self.active_tab) else {
             return Vec::new();
         };
+        self.prs_for_tab(tab, true)
+    }
 
+    fn prs_for_tab(&self, tab: &TabConfig, apply_search: bool) -> Vec<&PullRequest> {
         let source_prs: Vec<&PullRequest> = match tab.source {
             TabSource::Reviewing => self.reviewing.iter().collect(),
             TabSource::Authored => self.authored.iter().collect(),
@@ -337,6 +456,12 @@ impl Ridgeline {
         source_prs
             .into_iter()
             .filter(|pr| {
+                if let Some(ref waiting_on) = tab.filter.waiting_on {
+                    let on_author = pr.is_waiting_on_author();
+                    if on_author != (*waiting_on == WaitingOn::Author) {
+                        return false;
+                    }
+                }
                 if let Some(max) = tab.filter.max_reviewers {
                     if pr.reviewers.len() as u32 > max {
                         return false;
@@ -350,12 +475,21 @@ impl Ridgeline {
                         _ => {}
                     }
                 }
+                if !tab.filter.cc_types.is_empty() {
+                    let kind = parse_conventional_commit(&pr.title).map(|cc| cc.kind);
+                    let wanted = kind.is_some_and(|k| {
+                        tab.filter.cc_types.iter().any(|t| t.eq_ignore_ascii_case(k))
+                    });
+                    if !wanted {
+                        return false;
+                    }
+                }
                 if let Some(ref prefix) = tab.filter.branch_prefix {
                     if !pr.source_branch.starts_with(prefix) {
                         return false;
                     }
                 }
-                if !self.search_text.is_empty() {
+                if apply_search && !self.search_text.is_empty() {
                     let q = self.search_text.to_lowercase();
                     let matches = pr.title.to_lowercase().contains(&q)
                         || pr.author.display_name.to_lowercase().contains(&q)
@@ -390,6 +524,7 @@ impl Ridgeline {
                     .child(
                         Button::new("refresh")
                             .ghost()
+                            .loading(self.refreshing || self.is_loading())
                             .compact()
                             .icon(Icon::new(IconName::RefreshCw).size_4())
                             .tooltip("Refresh (Cmd+R)")
@@ -496,49 +631,322 @@ impl Ridgeline {
                     .flex_1()
                     .min_h_0()
                     .overflow_y_scroll();
-                for pr in &prs {
-                    list = list.child(self.render_pr_row(pr, cx));
+                let display = tabs
+                    .get(self.active_tab)
+                    .map(|t| t.display.clone())
+                    .unwrap_or(TabDisplay::Reviewing);
+                match &self.phase {
+                    LoadPhase::Connecting | LoadPhase::FirstPoll => {
+                        list = list.children((0..6).map(|i| skeleton_row(i, cx)));
+                    }
+                    LoadPhase::NoProviders => {
+                        list = list.child(self.render_list_state(
+                            IconName::Inbox,
+                            "No providers yet",
+                            Some("Add an Azure DevOps organization to start tracking pull requests.".into()),
+                            Some(("Open settings", true)),
+                            cx,
+                        ));
+                    }
+                    LoadPhase::Failed(e) => {
+                        list = list.child(self.render_list_state(
+                            IconName::CircleAlert,
+                            "Couldn't load pull requests",
+                            Some(e.clone()),
+                            Some(("Try again", false)),
+                            cx,
+                        ));
+                    }
+                    LoadPhase::Ready if prs.is_empty() => {
+                        let (title, detail) = self.empty_tab_text(tabs.get(self.active_tab).copied());
+                        list = list.child(self.render_list_state(
+                            if self.search_text.is_empty() { IconName::Inbox } else { IconName::Search },
+                            title,
+                            detail,
+                            None,
+                            cx,
+                        ));
+                    }
+                    LoadPhase::Ready => {
+                        for pr in &prs {
+                            list = list.child(self.render_pr_row(pr, &display, cx));
+                        }
+                    }
                 }
                 list
             })
     }
 
-    fn count_for_tab(&self, tab: &TabConfig) -> usize {
-        match tab.source {
-            TabSource::Reviewing => self.reviewing.len(),
-            TabSource::Authored => self.authored.len(),
-            TabSource::All => self.reviewing.len() + self.authored.len(),
-        }
+    fn is_loading(&self) -> bool {
+        matches!(self.phase, LoadPhase::Connecting | LoadPhase::FirstPoll)
     }
 
-    fn render_pr_row(&self, pr: &PullRequest, cx: &mut Context<Self>) -> impl IntoElement {
+    fn empty_tab_text(&self, tab: Option<&TabConfig>) -> (&'static str, Option<String>) {
+        if !self.search_text.is_empty() {
+            return (
+                "No matches",
+                Some(format!("Nothing in this tab matches \"{}\".", self.search_text)),
+            );
+        }
+        let detail = match tab.map(|t| (&t.source, &t.filter.waiting_on)) {
+            Some((_, Some(WaitingOn::Author))) => "Nothing needs you right now.",
+            Some((_, Some(WaitingOn::Reviewers))) => "No PRs are waiting on reviewers.",
+            Some((TabSource::Reviewing, None)) => "No reviews assigned to you.",
+            Some((TabSource::Authored, None)) => "You have no open PRs.",
+            _ => "No pull requests match this tab's filters.",
+        };
+        ("All clear", Some(detail.into()))
+    }
+
+    /// Centered message for the empty, error and no-provider states. The
+    /// action is either "open settings" (true) or "retry" (false).
+    fn render_list_state(
+        &self,
+        icon: IconName,
+        title: &'static str,
+        detail: Option<String>,
+        action: Option<(&'static str, bool)>,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let theme = cx.theme();
+        v_flex()
+            .flex_1()
+            .items_center()
+            .justify_center()
+            .gap_2()
+            .py(px(64.))
+            .px_8()
+            .child(Icon::new(icon).size_8().text_color(theme.muted_foreground))
+            .child(div().text_sm().font_weight(FontWeight::MEDIUM).child(title))
+            .when_some(detail, |el, d| {
+                el.child(
+                    div()
+                        .max_w(px(420.))
+                        .text_xs()
+                        .text_center()
+                        .text_color(theme.muted_foreground)
+                        .child(d),
+                )
+            })
+            .when_some(action, |el, (label, settings)| {
+                el.child(
+                    div().pt_2().child(
+                        Button::new("list-state-action")
+                            .outline()
+                            .small()
+                            .label(label)
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                if settings {
+                                    this.open_settings(&OpenSettings, window, cx);
+                                } else {
+                                    this.refresh(&Refresh, window, cx);
+                                }
+                            })),
+                    ),
+                )
+            })
+    }
+
+    fn count_for_tab(&self, tab: &TabConfig) -> usize {
+        self.prs_for_tab(tab, false).len()
+    }
+
+    fn provider_color(&self, provider: &str) -> Option<Hsla> {
+        self.config
+            .providers
+            .iter()
+            .find_map(|p| match p {
+                ProviderConfig::AzureDevOps(c) if c.name == provider => c.color.as_deref(),
+                _ => None,
+            })
+            .and_then(parse_hex_color)
+    }
+
+    fn render_pr_row(
+        &self,
+        pr: &PullRequest,
+        display: &TabDisplay,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let theme = cx.theme();
+        let general = &self.config.general;
         let is_selected = self.selected_pr.as_ref() == Some(&pr.id);
         let pr_id = pr.id.clone();
-        let age = relative_time(&pr.created_at);
-        let age_hours = chrono::Utc::now()
-            .signed_duration_since(pr.created_at)
-            .num_hours() as u64;
-        let warning_hours = self.config.general.age_warning_hours;
-        let danger_hours = self.config.general.age_danger_hours;
-
-        let age_color = if age_hours >= danger_hours {
-            gpui_kit::red()
-        } else if age_hours >= warning_hours {
-            gpui_kit::yellow()
+        let web_url = pr.web_url.clone();
+        let provider_color = self.provider_color(&pr.id.provider);
+        let indicator = &general.provider_indicator;
+        let cc = general
+            .parse_conventional_commits
+            .then(|| parse_conventional_commit(&pr.title))
+            .flatten();
+        let title = cc.as_ref().map_or(pr.title.as_str(), |c| c.description).to_string();
+        let repo_label = if general.show_project_name {
+            format!("{}/{}", pr.repository.project, pr.repository.name)
         } else {
-            theme.muted_foreground
+            pr.repository.name.clone()
         };
+        let is_reviewing = *display == TabDisplay::Reviewing;
+        let row_id = SharedString::from(format!(
+            "pr-{}-{}-{}",
+            pr.id.provider, pr.id.repository, pr.id.number
+        ));
 
-        let vote_summary = vote_summary_text(&pr.reviewers);
-        let build_icon = build_status_icon(pr.build_status.as_ref());
+        let title_line = h_flex()
+            .gap_2()
+            .min_w_0()
+            .when_some(
+                provider_color.filter(|_| *indicator == ProviderIndicator::Badge),
+                |el, color| {
+                    el.child(
+                        div()
+                            .flex_none()
+                            .px(px(6.))
+                            .rounded(px(4.))
+                            .text_size(px(10.))
+                            .font_weight(FontWeight::MEDIUM)
+                            .bg(color)
+                            .text_color(gpui_kit::white())
+                            .child(pr.id.provider.clone()),
+                    )
+                },
+            )
+            .child(
+                div()
+                    .text_sm()
+                    .font_weight(FontWeight::MEDIUM)
+                    .truncate()
+                    .child(title),
+            )
+            .when(pr.is_draft, |el| {
+                el.child(
+                    h_flex()
+                        .flex_none()
+                        .gap_1()
+                        .px_1()
+                        .rounded(px(4.))
+                        .border_1()
+                        .border_color(theme.border)
+                        .text_xs()
+                        .text_color(theme.muted_foreground)
+                        .child(Icon::new(Lucide::FilePen).size(px(12.)))
+                        .child("Draft"),
+                )
+            });
 
-        div()
-            .id(("pr", pr.id.number))
+        let cc_line = cc.as_ref().map(|cc| {
+            let kind_color = commit_type_color(cc.kind, theme);
+            h_flex()
+                .gap_1()
+                .child(pill(cc.kind.to_string(), kind_color, theme).font_weight(FontWeight::MEDIUM))
+                .when_some(cc.scope, |el, scope| {
+                    el.child(pill(scope.to_string(), None, theme))
+                })
+                .when(cc.breaking, |el| {
+                    el.child(
+                        pill("breaking".into(), Some(theme.red), theme)
+                            .font_weight(FontWeight::MEDIUM),
+                    )
+                })
+        });
+
+        let meta_line = h_flex()
+            .gap_2()
+            .min_w_0()
+            .text_xs()
+            .text_color(theme.muted_foreground)
+            .child(
+                div()
+                    .flex_none()
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(theme.foreground.opacity(0.7))
+                    .child(repo_label),
+            )
+            .child(div().flex_none().child(format!("#{}", pr.id.number)))
+            .when(is_reviewing, |el| {
+                el.child(
+                    div()
+                        .flex_none()
+                        .child(format!("by {}", pr.author.display_name)),
+                )
+            })
+            .child(
+                h_flex()
+                    .id(SharedString::from(format!("{row_id}-branch")))
+                    .min_w_0()
+                    .gap_1()
+                    .child(Icon::new(Lucide::GitBranch).size(px(12.)))
+                    .child(div().truncate().child(short_branch(&pr.source_branch).to_string()))
+                    .tooltip({
+                        let text = format!(
+                            "{} → {}",
+                            short_branch(&pr.source_branch),
+                            short_branch(&pr.target_branch)
+                        );
+                        move |window, cx| Tooltip::new(text.clone()).build(window, cx)
+                    }),
+            );
+
+        let mut right = h_flex().flex_none().items_center().gap_2();
+        if is_reviewing {
+            if pr.reviewers.iter().any(|r| r.vote == Vote::WaitingForAuthor) {
+                right = right.child(outline_badge(
+                    Lucide::Clock,
+                    "Waiting for author".into(),
+                    theme.yellow,
+                ));
+            }
+            right = right.child(h_flex().gap(px(2.)).children(
+                pr.reviewers
+                    .iter()
+                    .enumerate()
+                    .map(|(i, r)| vote_chip(r, format!("{row_id}-vote-{i}"), theme)),
+            ));
+        } else {
+            right = right.child(status_summary(pr, theme));
+        }
+        right = right
+            .children(open_threads_badge(pr.open_threads, theme))
+            .children(merge_status_badge(pr.merge_status.as_ref(), theme))
+            .children(build_status_badge(pr.build_status.as_ref(), theme))
+            .child(self.age_indicator(pr, is_reviewing, theme))
+            .child(
+                Button::new(SharedString::from(format!("{row_id}-open")))
+                    .ghost()
+                    .xsmall()
+                    .icon(Icon::new(IconName::ExternalLink).size(px(14.)))
+                    .tooltip("Open in browser")
+                    .on_click(cx.listener(move |_, _, _window, cx| {
+                        cx.stop_propagation();
+                        let _ = open::that(&web_url);
+                    })),
+            );
+
+        h_flex()
+            .id(row_id.clone())
             .w_full()
-            .px_2()
-            .py_1()
+            .items_center()
+            .gap_3()
+            .px_4()
+            .py_3()
+            .border_b_1()
+            .border_color(theme.border)
+            .relative()
             .cursor_pointer()
+            // GPUI has no per-side border color, so the provider stripe is an overlay.
+            .when_some(
+                provider_color.filter(|_| *indicator == ProviderIndicator::Border),
+                |el, color| {
+                    el.child(
+                        div()
+                            .absolute()
+                            .left_0()
+                            .top_0()
+                            .bottom_0()
+                            .w(px(3.))
+                            .bg(color),
+                    )
+                },
+            )
             .when(is_selected, |el| el.bg(theme.sidebar_primary))
             .hover(|s| s.bg(theme.sidebar_accent))
             .on_click(cx.listener(move |this, _, _window, cx| {
@@ -546,58 +954,53 @@ impl Ridgeline {
             }))
             .child(
                 v_flex()
+                    .flex_1()
+                    .min_w_0()
                     .gap(px(2.))
-                    .child(
-                        h_flex()
-                            .justify_between()
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(theme.muted_foreground)
-                                    .truncate()
-                                    .child(format!(
-                                        "{}/{}",
-                                        pr.repository.project, pr.repository.name
-                                    )),
-                            )
-                            .child(
-                                h_flex()
-                                    .gap_1()
-                                    .child(
-                                        div()
-                                            .text_xs()
-                                            .text_color(age_color)
-                                            .child(age),
-                                    )
-                                    .children(build_icon),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .text_sm()
-                            .truncate()
-                            .when(pr.is_draft, |el| {
-                                el.text_color(theme.muted_foreground)
-                            })
-                            .child(pr.title.clone()),
-                    )
-                    .child(
-                        h_flex()
-                            .justify_between()
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(theme.muted_foreground)
-                                    .child(pr.author.display_name.clone()),
-                            )
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(theme.muted_foreground)
-                                    .child(vote_summary),
-                            ),
-                    ),
+                    .child(title_line)
+                    .children(cc_line)
+                    .child(meta_line),
             )
+            .child(right)
+    }
+
+    fn age_indicator(
+        &self,
+        pr: &PullRequest,
+        is_reviewing: bool,
+        theme: &gpui_kit::component::Theme,
+    ) -> impl IntoElement {
+        let age_hours = chrono::Utc::now()
+            .signed_duration_since(pr.created_at)
+            .num_hours()
+            .max(0) as u64;
+        let color = if age_hours >= self.config.general.age_danger_hours {
+            theme.red
+        } else if age_hours >= self.config.general.age_warning_hours {
+            theme.warning
+        } else {
+            theme.muted_foreground
+        };
+        let created = pr.created_at.with_timezone(&chrono::Local).format("%Y-%m-%d %H:%M");
+        let tooltip = if is_reviewing {
+            format!("Waiting for review since {created}")
+        } else {
+            format!("Open since {created}")
+        };
+        h_flex()
+            .id(SharedString::from(format!(
+                "age-{}-{}-{}",
+                pr.id.provider, pr.id.repository, pr.id.number
+            )))
+            .gap_1()
+            .text_xs()
+            .text_color(color)
+            .child(
+                Icon::new(if is_reviewing { Lucide::Hourglass } else { Lucide::Clock })
+                    .size(px(12.)),
+            )
+            .child(relative_time(&pr.created_at))
+            .tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
     }
 
     fn render_detail_panel(&self, cx: &mut Context<Self>) -> Option<impl IntoElement> {
@@ -787,12 +1190,22 @@ impl Ridgeline {
     }
 
     fn render_status_bar(&self, _cx: &mut Context<Self>) -> impl IntoElement {
+        let busy = self.refreshing || self.is_loading();
         let left = if let Some(msg) = &self.status_message {
             msg.clone()
-        } else if let Some(last) = &self.last_poll {
-            format!("Last poll: {} ago", relative_time(last))
         } else {
-            "Not polled yet".into()
+            match (&self.phase, &self.last_poll) {
+                (LoadPhase::Connecting, _) => "Connecting to providers…".into(),
+                (LoadPhase::FirstPoll, _) => "Loading pull requests…".into(),
+                (LoadPhase::NoProviders, _) => "No providers configured".into(),
+                (LoadPhase::Failed(_), _) => "Couldn't load pull requests".into(),
+                _ if self.refreshing => "Refreshing…".into(),
+                (_, Some(last)) => match relative_time(last).as_str() {
+                    "now" => "Updated just now".into(),
+                    t => format!("Updated {t} ago"),
+                },
+                (_, None) => String::new(),
+            }
         };
 
         let reviewing_count = self.reviewing.len();
@@ -806,10 +1219,21 @@ impl Ridgeline {
         if error_count > 0 {
             right_parts.push(format!("{error_count} errors"));
         }
-        let right = right_parts.join(" · ");
+        // Zero counts during the first load read as "you have nothing".
+        let right = if self.phase == LoadPhase::Ready {
+            right_parts.join(" · ")
+        } else {
+            String::new()
+        };
 
         StatusBar::new()
-            .child(div().text_xs().child(left))
+            .child(
+                h_flex()
+                    .gap_1p5()
+                    .items_center()
+                    .when(busy, |el| el.child(Spinner::new().xsmall()))
+                    .child(div().text_xs().child(left)),
+            )
             .child(div().text_xs().child(right))
     }
 }
@@ -846,33 +1270,6 @@ fn short_branch(branch: &str) -> &str {
     branch.strip_prefix("refs/heads/").unwrap_or(branch)
 }
 
-fn vote_summary_text(reviewers: &[Reviewer]) -> String {
-    if reviewers.is_empty() {
-        return String::new();
-    }
-    let approved = reviewers
-        .iter()
-        .filter(|r| matches!(r.vote, Vote::Approved | Vote::ApprovedWithSuggestions))
-        .count();
-    let rejected = reviewers.iter().filter(|r| r.vote == Vote::Rejected).count();
-    let waiting = reviewers
-        .iter()
-        .filter(|r| r.vote == Vote::WaitingForAuthor)
-        .count();
-
-    let mut parts = Vec::new();
-    if approved > 0 {
-        parts.push(format!("{approved}✓"));
-    }
-    if rejected > 0 {
-        parts.push(format!("{rejected}✗"));
-    }
-    if waiting > 0 {
-        parts.push(format!("{waiting}⏳"));
-    }
-    parts.join(" ")
-}
-
 fn vote_color(vote: &Vote, theme: &gpui_kit::component::Theme) -> Hsla {
     match vote {
         Vote::Approved | Vote::ApprovedWithSuggestions => gpui_kit::green(),
@@ -880,16 +1277,6 @@ fn vote_color(vote: &Vote, theme: &gpui_kit::component::Theme) -> Hsla {
         Vote::WaitingForAuthor => gpui_kit::yellow(),
         Vote::NoVote => theme.muted_foreground,
     }
-}
-
-fn build_status_icon(status: Option<&BuildStatus>) -> Option<impl IntoElement> {
-    let (icon_name, color) = match status? {
-        BuildStatus::Succeeded => (IconName::CircleCheck, gpui_kit::green()),
-        BuildStatus::Failed => (IconName::CircleX, gpui_kit::red()),
-        BuildStatus::InProgress => (IconName::Loader, gpui_kit::yellow()),
-        BuildStatus::NotStarted => return None,
-    };
-    Some(Icon::new(icon_name).size(px(12.)).text_color(color))
 }
 
 fn build_status_label(
@@ -932,5 +1319,228 @@ fn policy_color(status: &PolicyEvaluation, theme: &gpui_kit::component::Theme) -
         PolicyEvaluation::Rejected => gpui_kit::red(),
         PolicyEvaluation::Running | PolicyEvaluation::Queued => gpui_kit::yellow(),
         PolicyEvaluation::NotApplicable => theme.muted_foreground,
+    }
+}
+
+/// Placeholder shaped like a PR row (title, pills, meta line, chips) so the
+/// list doesn't jump when real rows arrive.
+fn skeleton_row(i: usize, cx: &App) -> impl IntoElement {
+    // Vary widths a little so the rows don't read as a striped table.
+    let title_w = [0.55, 0.42, 0.62, 0.38, 0.5, 0.46][i % 6];
+    h_flex()
+        .px_4()
+        .py_3()
+        .gap_4()
+        .border_b_1()
+        .border_color(cx.theme().border)
+        .child(
+            v_flex()
+                .flex_1()
+                .gap_2()
+                .child(Skeleton::new().h_4().w(relative(title_w)).rounded_sm())
+                .child(
+                    h_flex()
+                        .gap_1()
+                        .child(Skeleton::new().secondary().h_4().w(px(36.)).rounded_sm())
+                        .child(Skeleton::new().secondary().h_4().w(px(72.)).rounded_sm()),
+                )
+                .child(Skeleton::new().secondary().h_3().w(relative(title_w * 0.9)).rounded_sm()),
+        )
+        .child(
+            h_flex()
+                .gap_2()
+                .child(Skeleton::new().secondary().h_5().w(px(48.)).rounded_full())
+                .child(Skeleton::new().secondary().h_4().w(px(28.)).rounded_sm()),
+        )
+}
+
+type ThemeRef<'a> = &'a gpui_kit::component::Theme;
+
+/// Small rounded label; `tint` colors text and a 20% background, `None` uses muted.
+fn pill(label: String, tint: Option<Hsla>, theme: ThemeRef) -> Div {
+    let (bg, fg) = match tint {
+        Some(c) => (c.opacity(0.2), c),
+        None => (theme.muted, theme.muted_foreground),
+    };
+    div()
+        .flex_none()
+        .px(px(6.))
+        .rounded(px(4.))
+        .text_size(px(10.))
+        .bg(bg)
+        .text_color(fg)
+        .child(label)
+}
+
+fn commit_type_color(kind: &str, theme: ThemeRef) -> Option<Hsla> {
+    match kind {
+        "feat" => Some(theme.green),
+        "fix" => Some(theme.red),
+        "refactor" => Some(theme.magenta),
+        "perf" => Some(theme.warning),
+        "docs" => Some(theme.blue),
+        "test" => Some(theme.cyan),
+        _ => None,
+    }
+}
+
+fn outline_badge(icon: Lucide, label: SharedString, color: Hsla) -> impl IntoElement {
+    h_flex()
+        .flex_none()
+        .gap_1()
+        .px_2()
+        .py(px(1.))
+        .rounded_full()
+        .border_1()
+        .border_color(color.opacity(0.5))
+        .text_xs()
+        .text_color(color)
+        .child(Icon::new(icon).size(px(12.)))
+        .child(label)
+}
+
+fn solid_badge(icon: Option<Lucide>, label: SharedString, bg: Hsla, fg: Hsla) -> Stateful<Div> {
+    h_flex()
+        .id(label.clone())
+        .flex_none()
+        .gap_1()
+        .px_2()
+        .py(px(1.))
+        .rounded_full()
+        .text_xs()
+        .font_weight(FontWeight::MEDIUM)
+        .bg(bg)
+        .text_color(fg)
+        .children(icon.map(|i| Icon::new(i).size(px(12.))))
+        .child(label)
+}
+
+fn vote_chip(reviewer: &Reviewer, id: String, theme: ThemeRef) -> impl IntoElement {
+    let (icon, color) = match reviewer.vote {
+        Vote::Approved | Vote::ApprovedWithSuggestions => (Lucide::Check, Some(theme.green)),
+        Vote::Rejected => (Lucide::X, Some(theme.red)),
+        Vote::WaitingForAuthor => (Lucide::Clock, Some(theme.yellow)),
+        Vote::NoVote => (Lucide::Minus, None),
+    };
+    let (bg, fg) = match color {
+        Some(c) if reviewer.vote == Vote::ApprovedWithSuggestions => (c.opacity(0.1), c),
+        Some(c) => (c.opacity(0.2), c),
+        None => (theme.muted, theme.muted_foreground),
+    };
+    let name = &reviewer.user.display_name;
+    let group = is_group_reviewer(name);
+    let tooltip = format!(
+        "{}{}",
+        if group { group_label(name) } else { name },
+        if reviewer.is_required { " (required)" } else { "" }
+    );
+
+    h_flex()
+        .id(SharedString::from(id))
+        .flex_none()
+        .h(px(22.))
+        .gap(px(2.))
+        .px(px(6.))
+        .rounded_full()
+        .text_xs()
+        .font_weight(FontWeight::MEDIUM)
+        .bg(bg)
+        .text_color(fg)
+        .when(reviewer.is_required, |el| el.border_1().border_color(fg.opacity(0.3)))
+        .child(Icon::new(icon).size(px(12.)))
+        .map(|el| {
+            if group {
+                el.child(Icon::new(Lucide::Users).size(px(12.)))
+            } else {
+                el.child(initials(name))
+            }
+        })
+        .tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
+}
+
+/// Authored-tab summary, mirroring the Tauri `PrStatusSummary` priority order.
+fn status_summary(pr: &PullRequest, theme: ThemeRef) -> AnyElement {
+    let total = pr.reviewers.len();
+    if total == 0 {
+        return outline_badge(Lucide::UserX, "No reviewers".into(), theme.warning).into_any_element();
+    }
+    let count = |f: fn(&Vote) -> bool| pr.reviewers.iter().filter(|r| f(&r.vote)).count();
+    let approved = count(|v| matches!(v, Vote::Approved | Vote::ApprovedWithSuggestions));
+    let rejected = count(|v| *v == Vote::Rejected);
+    let waiting = count(|v| *v == Vote::WaitingForAuthor);
+
+    if rejected > 0 {
+        solid_badge(
+            Some(Lucide::TriangleAlert),
+            format!("{rejected} rejected").into(),
+            theme.danger,
+            theme.danger_foreground,
+        )
+        .into_any_element()
+    } else if waiting > 0 {
+        outline_badge(Lucide::Clock, "Waiting for you".into(), theme.yellow).into_any_element()
+    } else if approved == total {
+        solid_badge(
+            Some(Lucide::CircleCheck),
+            "All approved".into(),
+            theme.success,
+            theme.success_foreground,
+        )
+        .into_any_element()
+    } else {
+        solid_badge(
+            Some(Lucide::CircleCheck),
+            format!("{approved}/{total}").into(),
+            theme.secondary,
+            theme.secondary_foreground,
+        )
+        .into_any_element()
+    }
+}
+
+fn open_threads_badge(count: u32, theme: ThemeRef) -> Option<impl IntoElement> {
+    if count == 0 {
+        return None;
+    }
+    let label = if count == 1 { "1 comment".to_string() } else { format!("{count} comments") };
+    Some(
+        div()
+            .id("open-threads")
+            .child(outline_badge(Lucide::MessageSquare, label.into(), theme.warning))
+            .tooltip(|window, cx| {
+                Tooltip::new("Unresolved comment threads from reviewers").build(window, cx)
+            }),
+    )
+}
+
+fn merge_status_badge(status: Option<&MergeStatus>, theme: ThemeRef) -> Option<impl IntoElement> {
+    let (icon, label, tip) = match status? {
+        MergeStatus::Conflicts => (Lucide::GitMerge, "Conflicts", "This PR has merge conflicts"),
+        MergeStatus::RejectedByPolicy => {
+            (Lucide::TriangleAlert, "Policy blocked", "Blocked by branch policy")
+        }
+        _ => return None,
+    };
+    Some(
+        solid_badge(Some(icon), label.into(), theme.danger, theme.danger_foreground)
+            .tooltip(move |window, cx| Tooltip::new(tip).build(window, cx)),
+    )
+}
+
+fn build_status_badge(status: Option<&BuildStatus>, theme: ThemeRef) -> Option<impl IntoElement> {
+    match status? {
+        BuildStatus::InProgress => Some(solid_badge(
+            Some(Lucide::Loader),
+            "Building".into(),
+            theme.secondary,
+            theme.secondary_foreground,
+        )),
+        BuildStatus::Failed => Some(solid_badge(
+            None,
+            "Build failed".into(),
+            theme.danger,
+            theme.danger_foreground,
+        )),
+        BuildStatus::Succeeded | BuildStatus::NotStarted => None,
     }
 }

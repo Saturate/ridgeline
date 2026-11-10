@@ -1,6 +1,8 @@
 mod app;
+mod assets;
 mod log;
 mod palette;
+mod pr_row;
 mod settings;
 mod settings_window;
 mod theme;
@@ -75,7 +77,7 @@ fn main() {
     }
 
     gpui_kit::application()
-        .with_assets(gpui_kit::assets::Assets)
+        .with_assets(assets::AppAssets)
         .run(move |cx| {
             gpui_kit::init(cx);
             theme::install(cx);

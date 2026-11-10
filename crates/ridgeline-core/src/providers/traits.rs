@@ -48,6 +48,9 @@ pub trait PrProvider: Send + Sync {
     /// Get detailed info for a single PR (policies, full description, etc.)
     async fn get_detail(&self, pr_id: &PrId) -> Result<PrDetail, ProviderError>;
 
+    /// Count unresolved comment threads not started by the PR author.
+    async fn count_open_threads(&self, pr: &PullRequest) -> Result<u32, ProviderError>;
+
     /// Build the web URL for a PR
     fn web_url(&self, pr_id: &PrId) -> String;
 }

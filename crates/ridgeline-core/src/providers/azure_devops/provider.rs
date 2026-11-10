@@ -187,6 +187,17 @@ impl PrProvider for AzureDevOpsProvider {
         })
     }
 
+    async fn count_open_threads(&self, pr: &PullRequest) -> Result<u32, ProviderError> {
+        let threads = self
+            .client
+            .get_threads(&pr.id.project, &pr.id.repository, pr.id.number)
+            .await?;
+        Ok(threads
+            .iter()
+            .filter(|t| mapper::is_open_reviewer_thread(t, &pr.author.id))
+            .count() as u32)
+    }
+
     fn web_url(&self, pr_id: &PrId) -> String {
         format!(
             "{}/{}/{}/_git/{}/pullrequest/{}",

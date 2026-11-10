@@ -1,6 +1,6 @@
 use chrono::DateTime;
 
-use super::types::{AdoPolicyEvaluation, AdoPullRequest, AdoReviewer};
+use super::types::{AdoPolicyEvaluation, AdoPullRequest, AdoReviewer, AdoThread};
 use crate::providers::types::*;
 
 pub fn map_pull_request(ado_pr: &AdoPullRequest, provider_name: &str, base_url: &str) -> PullRequest {
@@ -52,6 +52,7 @@ pub fn map_pull_request(ado_pr: &AdoPullRequest, provider_name: &str, base_url: 
             "{}/{}/{}/_git/{}/pullrequest/{}",
             base_url, project, project, repo, ado_pr.pull_request_id
         ),
+        open_threads: 0,
     }
 }
 
@@ -112,6 +113,17 @@ pub fn map_policy_evaluation(eval: &AdoPolicyEvaluation) -> PolicyStatus {
             _ => PolicyEvaluation::NotApplicable,
         },
     }
+}
+
+/// System threads (vote changes, pushes, policy updates) have no status, and
+/// notes the author left for reviewers aren't something the author needs to act on.
+pub fn is_open_reviewer_thread(thread: &AdoThread, author_id: &str) -> bool {
+    let open = matches!(thread.status.as_deref(), Some("active" | "pending"));
+    let Some(first) = thread.comments.as_ref().and_then(|c| c.first()) else {
+        return false;
+    };
+    let is_system = first.comment_type.as_deref() == Some("system");
+    open && !is_system && first.author.id != author_id
 }
 
 fn strip_refs_prefix(refname: &str) -> String {

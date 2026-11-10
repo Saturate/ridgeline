@@ -14,58 +14,54 @@ use providers::azure_devops::AzureDevOpsProvider;
 use providers::traits::PrProvider;
 use providers::types::{BuildStatus, PolicyEvaluation, PolicyStatus, PullRequest, UserId, Vote};
 
-pub async fn init_providers(
-    config: &config::model::Config,
-) -> Vec<(Arc<dyn PrProvider>, UserId, String)> {
+/// Outcome of connecting one configured provider, kept per provider so the UI
+/// can say which one failed and why.
+pub struct ProviderInit {
+    pub name: String,
+    pub result: Result<(Arc<dyn PrProvider>, UserId), String>,
+}
+
+pub async fn init_providers(config: &config::model::Config) -> Vec<ProviderInit> {
     let init_futs: Vec<_> = config
         .providers
         .iter()
         .map(|provider_config| async {
-            match provider_config {
-                ProviderConfig::AzureDevOps(ado_config) => {
-                    let provider = match ado_config.auth {
-                        AuthMethod::Pat => {
-                            let pat = config::credentials::get_token(&ado_config.name)
-                                .map_err(|e| {
-                                    eprintln!("skipping provider {}: {}", ado_config.name, e);
-                                })
-                                .ok()?;
-                            AzureDevOpsProvider::new(ado_config, &pat)
-                        }
-                        AuthMethod::AzureCli => {
-                            let credential = Arc::new(auth::AzureCliCredential);
-                            AzureDevOpsProvider::with_credential(ado_config, credential)
-                        }
-                        AuthMethod::DeviceCode => {
-                            // Device code needs an interactive flow first;
-                            // if no cached token exists, skip with a message.
-                            eprintln!(
-                                "provider {}: device-code auth requires browser sign-in from settings",
-                                ado_config.name
-                            );
-                            return None;
-                        }
-                    };
-                    let user = provider
-                        .get_current_user()
-                        .await
-                        .map_err(|e| {
-                            eprintln!("skipping provider {}: {}", ado_config.name, e);
-                        })
-                        .ok()?;
-                    let auth_label = provider.credential_type();
-                    let name = format!("{} ({}, {})", ado_config.name, user.display_name, auth_label);
-                    Some((Arc::new(provider) as Arc<dyn PrProvider>, user, name))
-                }
+            let ProviderConfig::AzureDevOps(ado_config) = provider_config;
+            let result = connect_azure_devops(ado_config).await;
+            if let Err(e) = &result {
+                eprintln!("provider {}: {e}", ado_config.name);
+            }
+            ProviderInit {
+                name: ado_config.name.clone(),
+                result,
             }
         })
         .collect();
 
-    futures::future::join_all(init_futs)
+    futures::future::join_all(init_futs).await
+}
+
+async fn connect_azure_devops(
+    ado_config: &config::model::AzureDevOpsConfig,
+) -> Result<(Arc<dyn PrProvider>, UserId), String> {
+    let provider = match ado_config.auth {
+        AuthMethod::Pat => {
+            let pat = config::credentials::get_token(&ado_config.name)
+                .map_err(|_| "No token stored".to_string())?;
+            AzureDevOpsProvider::new(ado_config, &pat)
+        }
+        AuthMethod::AzureCli => {
+            AzureDevOpsProvider::with_credential(ado_config, Arc::new(auth::AzureCliCredential))
+        }
+        AuthMethod::DeviceCode => {
+            return Err("Browser sign-in isn't supported yet".into());
+        }
+    };
+    let user = provider
+        .get_current_user()
         .await
-        .into_iter()
-        .flatten()
-        .collect()
+        .map_err(|e| e.to_string())?;
+    Ok((Arc::new(provider) as Arc<dyn PrProvider>, user))
 }
 
 pub fn derive_build_status(policies: &[PolicyStatus]) -> BuildStatus {
@@ -131,7 +127,9 @@ pub async fn enrich_build_status(
         if let Some((provider, _)) = provider {
             if let Ok(detail) = provider.get_detail(&pr.id).await {
                 let build_status = derive_build_status(&detail.policies);
-                if !commit_id.is_empty() {
+                // A running build finishes without a new commit, so only
+                // settled results are safe to reuse.
+                if !commit_id.is_empty() && build_status != BuildStatus::InProgress {
                     cache.insert(
                         pr.id.to_string(),
                         CachedBuildStatus {
@@ -142,6 +140,25 @@ pub async fn enrich_build_status(
                 }
                 pr.build_status = Some(build_status);
             }
+        }
+    }
+}
+
+/// Threads get resolved and added without new commits, so this is fetched
+/// every poll rather than cached.
+pub async fn enrich_open_threads(
+    prs: &mut [PullRequest],
+    providers: &[(Arc<dyn PrProvider>, UserId)],
+) {
+    let counts = futures::future::join_all(prs.iter().map(|pr| async move {
+        let (provider, _) = providers.iter().find(|(p, _)| p.name() == pr.id.provider)?;
+        provider.count_open_threads(pr).await.ok()
+    }))
+    .await;
+
+    for (pr, count) in prs.iter_mut().zip(counts) {
+        if let Some(count) = count {
+            pr.open_threads = count;
         }
     }
 }

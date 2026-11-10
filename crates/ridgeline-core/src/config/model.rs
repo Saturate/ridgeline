@@ -119,11 +119,24 @@ fn default_tabs() -> Vec<TabConfig> {
             filter: TabFilter::default(),
         },
         TabConfig {
-            label: "Authored".into(),
+            label: "Your turn".into(),
             source: TabSource::Authored,
             display: TabDisplay::Authored,
             enabled: true,
-            filter: TabFilter::default(),
+            filter: TabFilter {
+                waiting_on: Some(WaitingOn::Author),
+                ..TabFilter::default()
+            },
+        },
+        TabConfig {
+            label: "Waiting for review".into(),
+            source: TabSource::Authored,
+            display: TabDisplay::Authored,
+            enabled: true,
+            filter: TabFilter {
+                waiting_on: Some(WaitingOn::Reviewers),
+                ..TabFilter::default()
+            },
         },
         TabConfig {
             label: "Up for grabs".into(),
@@ -187,8 +200,17 @@ pub enum DraftFilter {
     Show,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum WaitingOn {
+    Author,
+    Reviewers,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TabFilter {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub waiting_on: Option<WaitingOn>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_reviewers: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

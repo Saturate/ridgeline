@@ -48,6 +48,26 @@ pub struct PullRequest {
     pub build_status: Option<BuildStatus>,
     pub source_commit_id: Option<String>,
     pub web_url: String,
+    /// Unresolved comment threads started by someone other than the author.
+    /// Only filled in for authored PRs.
+    #[serde(default)]
+    pub open_threads: u32,
+}
+
+impl PullRequest {
+    /// True when the author has something to fix: merge conflicts, a failing
+    /// build, unresolved reviewer comments, or a reviewer pushed back.
+    pub fn is_waiting_on_author(&self) -> bool {
+        let pushed_back = self
+            .reviewers
+            .iter()
+            .any(|r| matches!(r.vote, Vote::Rejected | Vote::WaitingForAuthor));
+
+        pushed_back
+            || self.open_threads > 0
+            || self.merge_status == Some(MergeStatus::Conflicts)
+            || self.build_status == Some(BuildStatus::Failed)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -183,5 +203,84 @@ impl fmt::Display for ProviderType {
             ProviderType::GitLab => write!(f, "GitLab"),
             ProviderType::Bitbucket => write!(f, "Bitbucket"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn reviewer(vote: Vote) -> Reviewer {
+        Reviewer {
+            user: User {
+                id: "r".into(),
+                display_name: "Reviewer".into(),
+                unique_name: None,
+            },
+            vote,
+            is_required: false,
+        }
+    }
+
+    fn pr(reviewers: Vec<Reviewer>) -> PullRequest {
+        PullRequest {
+            id: PrId {
+                provider: "p".into(),
+                project: "proj".into(),
+                repository: "repo".into(),
+                number: 1,
+            },
+            title: "t".into(),
+            description: None,
+            status: PrStatus::Active,
+            is_draft: false,
+            created_at: Utc::now(),
+            author: User {
+                id: "a".into(),
+                display_name: "Author".into(),
+                unique_name: None,
+            },
+            source_branch: "refs/heads/feature".into(),
+            target_branch: "refs/heads/main".into(),
+            reviewers,
+            repository: Repository {
+                name: "repo".into(),
+                project: "proj".into(),
+            },
+            labels: Vec::new(),
+            merge_status: None,
+            build_status: None,
+            source_commit_id: None,
+            web_url: String::new(),
+            open_threads: 0,
+        }
+    }
+
+    #[test]
+    fn pending_or_approved_waits_on_reviewers() {
+        assert!(!pr(vec![reviewer(Vote::Approved), reviewer(Vote::NoVote)]).is_waiting_on_author());
+        assert!(!pr(vec![reviewer(Vote::Approved)]).is_waiting_on_author());
+        assert!(!pr(Vec::new()).is_waiting_on_author());
+    }
+
+    #[test]
+    fn pushback_waits_on_author() {
+        assert!(pr(vec![reviewer(Vote::WaitingForAuthor)]).is_waiting_on_author());
+        assert!(pr(vec![reviewer(Vote::Rejected), reviewer(Vote::NoVote)]).is_waiting_on_author());
+    }
+
+    #[test]
+    fn conflicts_failed_builds_and_comments_wait_on_author() {
+        let mut conflicts = pr(vec![reviewer(Vote::NoVote)]);
+        conflicts.merge_status = Some(MergeStatus::Conflicts);
+        assert!(conflicts.is_waiting_on_author());
+
+        let mut failed = pr(vec![reviewer(Vote::NoVote)]);
+        failed.build_status = Some(BuildStatus::Failed);
+        assert!(failed.is_waiting_on_author());
+
+        let mut commented = pr(vec![reviewer(Vote::NoVote)]);
+        commented.open_threads = 2;
+        assert!(commented.is_waiting_on_author());
     }
 }
