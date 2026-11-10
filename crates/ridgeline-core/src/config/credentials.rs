@@ -41,6 +41,21 @@ pub fn get_token(provider_name: &str) -> Result<String> {
     )
 }
 
+/// Moves a provider's token to a new name. A filesystem rename is used rather
+/// than copy and delete: on case- or normalization-insensitive disks (APFS,
+/// NTFS) "Över" and "över" are the same file, and deleting the old name after
+/// writing the new one would delete the token itself.
+pub fn rename_token(old_name: &str, new_name: &str) -> Result<()> {
+    let from = token_file_path(old_name)?;
+    if !from.exists() {
+        return Ok(());
+    }
+    let to = token_file_path(new_name)?;
+    fs::rename(&from, &to).with_context(|| {
+        format!("failed to move token {} to {}", from.display(), to.display())
+    })
+}
+
 pub fn delete_token(provider_name: &str) -> Result<()> {
     let path = token_file_path(provider_name)?;
     if path.exists() {

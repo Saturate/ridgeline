@@ -336,7 +336,7 @@ impl SettingsWindow {
                         // Windows, so "Work" and "work" would share one file.
                         let clashes = config.0.providers.iter().any(|p| {
                             let ProviderConfig::AzureDevOps(a) = p;
-                            a.name.eq_ignore_ascii_case(&name)
+                            a.name.to_lowercase() == name.to_lowercase()
                                 && original_name.as_deref() != Some(a.name.as_str())
                         });
                         if clashes {
@@ -349,25 +349,12 @@ impl SettingsWindow {
                                 // Removed from config.toml while the dialog was open.
                                 return true;
                             };
-                            // Read, delete, then write: on case-insensitive disks a
-                            // case-only rename is the same file, so copy-then-delete
-                            // would delete the token; on case-sensitive ones (Linux)
-                            // the file still has to move.
-                            if *original != name {
-                                if let Ok(old_token) = credentials::get_token(original) {
-                                    let _ = credentials::delete_token(original);
-                                    if credentials::store_token(&name, &old_token).is_err() {
-                                        // Put it back and keep the old name rather
-                                        // than leave the provider without a token.
-                                        let _ = credentials::store_token(original, &old_token);
-                                        return false;
-                                    }
-                                    // The first delete can fail (permissions); don't
-                                    // leave a stray plaintext token under the old name.
-                                    if !original.eq_ignore_ascii_case(&name) {
-                                        let _ = credentials::delete_token(original);
-                                    }
-                                }
+                            if *original != name
+                                && credentials::rename_token(original, &name).is_err()
+                            {
+                                // Keep the old name rather than leave the
+                                // provider without a token under the new one.
+                                return false;
                             }
                             let ProviderConfig::AzureDevOps(ado) = &mut config.0.providers[idx];
                             ado.name = name.clone();
