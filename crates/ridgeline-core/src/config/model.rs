@@ -117,8 +117,10 @@ fn default_tabs() -> Vec<TabConfig> {
             display: TabDisplay::Reviewing,
             enabled: true,
             // Drafts aren't ready for review; the Tauri app hid them by default too.
+            // Once you've approved, the PR isn't waiting on you anymore.
             filter: TabFilter {
                 drafts: Some(DraftFilter::Hide),
+                hide_approved_by_me: true,
                 ..TabFilter::default()
             },
         },
@@ -212,6 +214,17 @@ pub enum WaitingOn {
     Reviewers,
 }
 
+/// How you ended up on a PR's reviewer list.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum Assigned {
+    /// You're a reviewer yourself.
+    Direct,
+    /// You're not on it personally: it came through a team you're in or a
+    /// project configured for the provider.
+    Indirect,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TabFilter {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -224,6 +237,32 @@ pub struct TabFilter {
     pub branch_prefix: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cc_types: Vec<String>,
+    /// Hide PRs where your own vote is an approval (with or without
+    /// suggestions). Team votes don't count: a team approving on your behalf
+    /// doesn't mean you looked at it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub hide_approved_by_me: bool,
+    /// Patterns matched against provider, project and repository names.
+    /// A leading `!` excludes; see `crate::filters::matches_patterns`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub repos: Vec<String>,
+    /// Patterns matched against the author's display name and email.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub authors: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assigned: Option<Assigned>,
+    /// Only PRs where your own reviewer entry is marked required.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub required_only: bool,
+    /// Only PRs opened at least this many days ago.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_age_days: Option<u32>,
+    /// Only PRs opened at most this many days ago.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_age_days: Option<u32>,
+    /// Target branch prefix, e.g. `release/`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_branch: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

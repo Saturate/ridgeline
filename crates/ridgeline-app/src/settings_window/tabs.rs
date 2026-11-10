@@ -11,9 +11,10 @@ use gpui_kit::component::{
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
+use gpui_kit::component::input::InputState;
 use ridgeline_core::config::loader;
 use ridgeline_core::config::model::{
-    DraftFilter, TabConfig, TabDisplay, TabFilter, TabSource, WaitingOn,
+    Assigned, DraftFilter, TabConfig, TabDisplay, TabFilter, TabSource, WaitingOn,
 };
 
 use super::{AppConfig, SettingsWindow, choice, field_label, footer_slot, labeled_field, list_row};
@@ -52,6 +53,32 @@ fn summary(tab: &TabConfig) -> String {
         Some(DraftFilter::Hide) => parts.push("no drafts".into()),
         Some(DraftFilter::Only) => parts.push("drafts only".into()),
         _ => {}
+    }
+    if tab.filter.hide_approved_by_me {
+        parts.push("hides your approvals".into());
+    }
+    match tab.filter.assigned {
+        Some(Assigned::Direct) => parts.push("assigned to you".into()),
+        Some(Assigned::Indirect) => parts.push("via team".into()),
+        None => {}
+    }
+    if tab.filter.required_only {
+        parts.push("you're required".into());
+    }
+    if !tab.filter.repos.is_empty() {
+        parts.push(format!("repos {}", tab.filter.repos.join(", ")));
+    }
+    if !tab.filter.authors.is_empty() {
+        parts.push(format!("authors {}", tab.filter.authors.join(", ")));
+    }
+    match (tab.filter.min_age_days, tab.filter.max_age_days) {
+        (Some(min), Some(max)) => parts.push(format!("{min}-{max} days old")),
+        (Some(min), None) => parts.push(format!("older than {min} days")),
+        (None, Some(max)) => parts.push(format!("up to {max} days old")),
+        (None, None) => {}
+    }
+    if let Some(target) = &tab.filter.target_branch {
+        parts.push(format!("into {target}*"));
     }
     if let Some(max) = tab.filter.max_reviewers {
         parts.push(format!("max {max} reviewers"));
@@ -162,6 +189,87 @@ fn tab_row(idx: usize, count: usize, tab: TabConfig) -> SettingItem {
     })
 }
 
+/// The free-text filter fields added after the first set, bundled so the
+/// dialog closures can carry them as one value.
+#[derive(Clone)]
+pub(super) struct TabMoreInputs {
+    repos: Entity<InputState>,
+    authors: Entity<InputState>,
+    target_branch: Entity<InputState>,
+    min_age: Entity<InputState>,
+    max_age: Entity<InputState>,
+}
+
+impl TabMoreInputs {
+    pub(super) fn new(window: &mut Window, cx: &mut App) -> Self {
+        let input = |placeholder: &'static str, window: &mut Window, cx: &mut App| {
+            cx.new(|cx| InputState::new(window, cx).placeholder(placeholder))
+        };
+        Self {
+            repos: input("e.g. DCC Energi, !BuildTemplates", window, cx),
+            authors: input("e.g. !renovate, !dependabot", window, cx),
+            target_branch: input("e.g. release/", window, cx),
+            min_age: input("any", window, cx),
+            max_age: input("any", window, cx),
+        }
+    }
+
+    fn load(&self, filter: &TabFilter, window: &mut Window, cx: &mut App) {
+        let num = |n: Option<u32>| n.map(|n| n.to_string()).unwrap_or_default();
+        let set = |input: &Entity<InputState>, text: String, window: &mut Window, cx: &mut App| {
+            input.update(cx, |s, cx| s.set_value(&text, window, cx));
+        };
+        set(&self.repos, filter.repos.join(", "), window, cx);
+        set(&self.authors, filter.authors.join(", "), window, cx);
+        set(
+            &self.target_branch,
+            filter.target_branch.clone().unwrap_or_default(),
+            window,
+            cx,
+        );
+        set(&self.min_age, num(filter.min_age_days), window, cx);
+        set(&self.max_age, num(filter.max_age_days), window, cx);
+    }
+
+    /// Writes the fields into `filter`; false when an age isn't a number.
+    fn store(&self, filter: &mut TabFilter, cx: &App) -> bool {
+        let text = |input: &Entity<InputState>| input.read(cx).value().trim().to_string();
+        let days = |input: &Entity<InputState>| -> Result<Option<u32>, ()> {
+            let t = text(input);
+            if t.is_empty() {
+                Ok(None)
+            } else {
+                t.parse().map(Some).map_err(|_| ())
+            }
+        };
+        let (Ok(min), Ok(max)) = (days(&self.min_age), days(&self.max_age)) else {
+            return false;
+        };
+        // "Older than 10, up to 5" can never match anything.
+        if let (Some(min), Some(max)) = (min, max) {
+            if min > max {
+                return false;
+            }
+        }
+        // Lists are shown joined with ", ". Only re-split a field the user
+        // edited: a pattern written in config.toml can contain a comma
+        // ("Doe, John") and would otherwise be split on an untouched save.
+        let update = |list: &mut Vec<String>, input: &Entity<InputState>| {
+            let t = text(input);
+            if t != list.join(", ") {
+                *list = ridgeline_core::filters::parse_patterns(&t);
+            }
+        };
+        update(&mut filter.repos, &self.repos);
+        update(&mut filter.authors, &self.authors);
+        let target = text(&self.target_branch);
+        filter.target_branch = (!target.is_empty()).then_some(target);
+        filter.min_age_days = min;
+        filter.max_age_days = max;
+        true
+    }
+}
+
 fn enabled_count_without(tabs: &[TabConfig], idx: usize) -> usize {
     tabs.iter()
         .enumerate()
@@ -270,6 +378,8 @@ impl SettingsWindow {
             .update(cx, |s, cx| s.set_value(&max_text, window, cx));
         self.tab_branch_prefix
             .update(cx, |s, cx| s.set_value(&prefix_text, window, cx));
+        self.tab_more.load(&initial.filter, window, cx);
+        let more = self.tab_more.clone();
 
         let draft = cx.new(|_| initial);
         let name_input = self.tab_name.clone();
@@ -381,6 +491,49 @@ impl SettingsWindow {
                             labeled_field("Max reviewers", &max_input, "Empty for any, 0 for unassigned"),
                             labeled_field("Branch prefix", &prefix_input, "e.g. feature/"),
                         ))
+                        .child(pair(
+                            labeled_field("Repos", &more.repos, "Provider, project or repo; ! excludes"),
+                            labeled_field("Authors", &more.authors, "Name or email; ! excludes"),
+                        ))
+                        .when(tab.source != TabSource::Authored, |form| {
+                            form.child(pair(
+                                choice(
+                                    "Assigned",
+                                    "tab-assigned",
+                                    vec![
+                                        (None, "Any"),
+                                        (Some(Assigned::Direct), "To me"),
+                                        (Some(Assigned::Indirect), "Via team"),
+                                    ],
+                                    tab.filter.assigned.clone(),
+                                    draft.clone(),
+                                    |t, v| t.filter.assigned = v,
+                                ),
+                                choice(
+                                    "Required",
+                                    "tab-required",
+                                    vec![(false, "Any"), (true, "Only mine")],
+                                    tab.filter.required_only,
+                                    draft.clone(),
+                                    |t, v| t.filter.required_only = v,
+                                ),
+                            ))
+                        })
+                        .child(pair(
+                            labeled_field("Older than (days)", &more.min_age, "e.g. 7 for a stale tab"),
+                            labeled_field("Up to (days old)", &more.max_age, "Empty for any"),
+                        ))
+                        .child(pair(
+                            labeled_field("Target branch", &more.target_branch, "Prefix, e.g. release/"),
+                            choice(
+                                "PRs you approved",
+                                "tab-approved",
+                                vec![(false, "Show"), (true, "Hide")],
+                                tab.filter.hide_approved_by_me,
+                                draft.clone(),
+                                |t, v| t.filter.hide_approved_by_me = v,
+                            ),
+                        ))
                         .child(
                             v_flex()
                                 .gap_1()
@@ -426,6 +579,7 @@ impl SettingsWindow {
                     let name_input = name_input.clone();
                     let max_input = max_input.clone();
                     let prefix_input = prefix_input.clone();
+                    let more = more.clone();
                     move |_, _, cx| {
                         let label = name_input.read(cx).value().trim().to_string();
                         if label.is_empty() {
@@ -446,8 +600,14 @@ impl SettingsWindow {
                         tab.label = label;
                         tab.filter.max_reviewers = max_reviewers;
                         tab.filter.branch_prefix = (!prefix.is_empty()).then_some(prefix);
+                        if !more.store(&mut tab.filter, cx) {
+                            return false;
+                        }
                         if tab.source != TabSource::Authored {
                             tab.filter.waiting_on = None;
+                        } else {
+                            tab.filter.assigned = None;
+                            tab.filter.required_only = false;
                         }
 
                         update_tabs(cx, |tabs| match &original {

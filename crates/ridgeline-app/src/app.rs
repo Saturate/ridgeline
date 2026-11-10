@@ -637,6 +637,22 @@ impl Ridgeline {
                 .collect(),
         };
 
+        let now = chrono::Utc::now();
+        // Assignment only describes PRs you review; on a My PRs tab it would
+        // just hide or keep everything (the dialog hides it there too).
+        let authored_only;
+        let filter = if tab.source == TabSource::Authored
+            && (tab.filter.assigned.is_some() || tab.filter.required_only)
+        {
+            authored_only = ridgeline_core::config::model::TabFilter {
+                assigned: None,
+                required_only: false,
+                ..tab.filter.clone()
+            };
+            &authored_only
+        } else {
+            &tab.filter
+        };
         source_prs
             .into_iter()
             .filter(|pr| {
@@ -652,6 +668,14 @@ impl Ridgeline {
                     if on_author != (*waiting_on == WaitingOn::Author) {
                         return false;
                     }
+                }
+                let me = self
+                    .providers
+                    .iter()
+                    .find(|(p, _)| p.name() == pr.id.provider)
+                    .map(|(_, user)| user.id.as_str());
+                if !ridgeline_core::filters::passes(filter, pr, me, now) {
+                    return false;
                 }
                 if let Some(max) = tab.filter.max_reviewers {
                     if pr.reviewers.len() as u32 > max {

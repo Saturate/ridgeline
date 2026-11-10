@@ -102,6 +102,7 @@ pub struct SettingsWindow {
     tab_name: Entity<InputState>,
     tab_max_reviewers: Entity<InputState>,
     tab_branch_prefix: Entity<InputState>,
+    tab_more: tabs::TabMoreInputs,
 }
 
 impl SettingsWindow {
@@ -141,6 +142,7 @@ impl SettingsWindow {
                 tab_name: cx.new(|cx| InputState::new(window, cx).placeholder("e.g. Up for grabs")),
                 tab_max_reviewers: cx.new(|cx| InputState::new(window, cx).placeholder("any")),
                 tab_branch_prefix: cx.new(|cx| InputState::new(window, cx).placeholder("feature/")),
+                tab_more: tabs::TabMoreInputs::new(window, cx),
             })
         });
     }
@@ -740,8 +742,7 @@ impl SettingsWindow {
 
         SettingPage::new("Appearance")
             .icon(Icon::new(IconName::Palette))
-            .groups(vec![
-                SettingGroup::new().title("Theme").items(vec![
+            .groups(vec![SettingGroup::new().title("Theme").items(vec![
                     SettingItem::new(
                         "Mode",
                         SettingField::dropdown(
@@ -775,8 +776,7 @@ impl SettingsWindow {
                             },
                         ),
                     ),
-                ]),
-            ])
+                ])])
     }
 }
 
