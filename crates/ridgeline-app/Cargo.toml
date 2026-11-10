@@ -21,6 +21,10 @@ open = "5"
 anyhow = "1"
 dirs = "6"
 
+# AttachConsole for --mcp-stdio; 0.61 is already in the lockfile via other crates.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_System_Console"] }
+
 [build-dependencies]
 # Same version gpui already pulls in; used only for Windows targets.
 embed-resource = "3.0.12"
