@@ -129,11 +129,17 @@ pub async fn enrich_build_status(
         if let Some((provider, _)) = provider {
             if let Ok(detail) = provider.get_detail(&pr.id).await {
                 let build_status = derive_build_status(&detail.policies);
-                // Running builds finish, failed ones get re-queued, and
-                // NotStarted is also what a failed policy fetch or a fresh
-                // push looks like, all without a new commit. Only a pass is
-                // final enough to reuse.
-                if !commit_id.is_empty() && build_status == BuildStatus::Succeeded {
+                // Running builds finish and failed ones get re-queued without
+                // a new commit, so those are refetched. NotStarted is reused
+                // only when the policy fetch worked: then it means the repo
+                // has no build policy, and refetching every poll would cost
+                // two requests per PR for nothing.
+                let reusable = match build_status {
+                    BuildStatus::Succeeded => true,
+                    BuildStatus::NotStarted => detail.policies_loaded,
+                    BuildStatus::InProgress | BuildStatus::Failed => false,
+                };
+                if !commit_id.is_empty() && reusable {
                     cache.insert(
                         pr.id.to_string(),
                         CachedBuildStatus {

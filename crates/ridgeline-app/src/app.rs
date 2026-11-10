@@ -181,7 +181,10 @@ impl Ridgeline {
     /// old poll task is stopped first so a replaced token can't keep working.
     fn start_init(&mut self, keep_current: bool, cx: &mut Context<Self>) {
         if !keep_current {
+            // Clearing providers too, so a refresh during this reconnect
+            // can't restart polling with the old (possibly replaced) token.
             self.poll_task = None;
+            self.providers.clear();
         }
         self.retry_task = None;
         let config = self.config.clone();
@@ -197,6 +200,7 @@ impl Ridgeline {
                     this.update(cx, |this, cx| {
                         this.refreshing = false;
                         this.phase = LoadPhase::Failed(e.to_string());
+                        this.schedule_retry(cx);
                         cx.notify();
                     })
                     .ok();
@@ -205,7 +209,7 @@ impl Ridgeline {
             };
 
             let mut health = crate::settings_window::ProviderHealth::default();
-            let mut failures = Vec::new();
+            let mut failures: Vec<String> = Vec::new();
             let mut providers: Vec<(Arc<dyn PrProvider>, UserId)> = Vec::new();
             for init in results {
                 match init.result {
@@ -221,6 +225,31 @@ impl Ridgeline {
             }
 
             this.update(cx, |this, cx| {
+                let mut providers = providers;
+                if keep_current {
+                    // Per provider: one that's already polling and failed to
+                    // reconnect (a blip during refresh) keeps its working
+                    // connection and isn't reported offline.
+                    let mut still_offline = Vec::new();
+                    for failure in failures.drain(..) {
+                        let name = failure.split(": ").next().unwrap_or_default();
+                        match this.providers.iter().find(|(p, _)| p.name() == name) {
+                            Some(existing) => {
+                                health.0.remove(name);
+                                providers.push(existing.clone());
+                            }
+                            None => still_offline.push(failure),
+                        }
+                    }
+                    failures = still_offline;
+                    if let Some(previous) =
+                        cx.try_global::<crate::settings_window::ProviderHealth>()
+                    {
+                        for (name, state) in &previous.0 {
+                            health.0.entry(name.clone()).or_insert_with(|| state.clone());
+                        }
+                    }
+                }
                 cx.set_global(health);
                 cx.refresh_windows();
                 this.offline = failures.clone();
@@ -237,9 +266,6 @@ impl Ridgeline {
                         this.phase = LoadPhase::FirstPoll;
                     }
                     this.start_polling(cx);
-                } else if keep_current && this.poll_task.is_some() {
-                    // Nothing new connected; keep polling what already works.
-                    this.refreshing = false;
                 } else {
                     this.providers.clear();
                     this.phase = LoadPhase::Failed(failures.join("\n"));
@@ -308,15 +334,12 @@ impl Ridgeline {
                                 .entry(e.provider.clone())
                                 .or_insert_with(|| e.message.clone());
                         }
-                        // "Couldn't ask" only when nothing came back at all and
-                        // every provider errored; one bad project query on an
-                        // otherwise working provider still shows its PRs.
-                        let all_failed = result.reviewing.is_empty()
-                            && result.authored.is_empty()
-                            && !providers.is_empty()
-                            && providers
-                                .iter()
-                                .all(|(p, _)| provider_errors.contains_key(p.name()));
+                        // Every list query failed: there's nothing new to show.
+                        let all_failed = !providers.is_empty()
+                            && providers.iter().all(|(p, _)| {
+                                result.failed_reviewing.iter().any(|n| n == p.name())
+                                    && result.failed_authored.iter().any(|n| n == p.name())
+                            });
                         let thread_errors = ridgeline_core::enrich_open_threads(
                             &mut result.authored,
                             &providers,
@@ -330,8 +353,26 @@ impl Ridgeline {
                 .await;
 
                 match poll_result {
-                    Ok((result, cache, all_failed, provider_errors)) => {
+                    Ok((mut result, cache, all_failed, provider_errors)) => {
                         this.update(cx, |this, cx| {
+                            // A failed query means that provider's slice of the
+                            // list is unknown, not empty. Keep the previous PRs
+                            // for it so they don't vanish from the tab and then
+                            // come back as "new PR" notifications.
+                            let keep = |previous: &[PullRequest], failed: &[String]| {
+                                previous
+                                    .iter()
+                                    .filter(|pr| failed.contains(&pr.id.provider))
+                                    .cloned()
+                                    .collect::<Vec<_>>()
+                            };
+                            result
+                                .reviewing
+                                .extend(keep(&this.reviewing, &result.failed_reviewing));
+                            result
+                                .authored
+                                .extend(keep(&this.authored, &result.failed_authored));
+
                             let mut health = cx
                                 .try_global::<crate::settings_window::ProviderHealth>()
                                 .cloned()
@@ -351,9 +392,6 @@ impl Ridgeline {
                             this.build_cache = cache;
                             this.refreshing = false;
                             if all_failed {
-                                // Checked before the change tracker: feeding it
-                                // empty lists would forget every PR and fire a
-                                // "new PR" notification for each on recovery.
                                 let reason = result
                                     .errors
                                     .iter()
@@ -775,7 +813,7 @@ impl Ridgeline {
                     LoadPhase::Ready if prs.is_empty() => {
                         let (title, detail) = self.empty_tab_text(tabs.get(self.active_tab).copied());
                         list = list.child(self.render_list_state(
-                            if self.search_text.is_empty() { IconName::Inbox } else { IconName::Search },
+                            if self.search_text.trim().is_empty() { IconName::Inbox } else { IconName::Search },
                             title,
                             detail,
                             None,
@@ -797,15 +835,19 @@ impl Ridgeline {
     }
 
     fn empty_tab_text(&self, tab: Option<&TabConfig>) -> (&'static str, Option<String>) {
-        if !self.search_text.is_empty() {
+        if !self.search_text.trim().is_empty() {
             return (
                 "No matches",
                 Some(format!("Nothing in this tab matches \"{}\".", self.search_text)),
             );
         }
-        let detail = match tab.map(|t| (&t.source, &t.filter.waiting_on)) {
-            Some((_, Some(WaitingOn::Author))) => "Nothing needs you right now.",
-            Some((_, Some(WaitingOn::Reviewers))) => "No PRs are waiting on reviewers.",
+        // waiting_on only applies to authored tabs (see prs_for_tab).
+        let detail = match tab.map(|t| {
+            let waiting_on = t.filter.waiting_on.as_ref().filter(|_| t.source == TabSource::Authored);
+            (&t.source, waiting_on)
+        }) {
+            Some((_, Some(&WaitingOn::Author))) => "Nothing needs you right now.",
+            Some((_, Some(&WaitingOn::Reviewers))) => "No PRs are waiting on reviewers.",
             Some((TabSource::Reviewing, None)) => "No reviews assigned to you.",
             Some((TabSource::Authored, None)) => "You have no open PRs.",
             _ => "No pull requests match this tab's filters.",

@@ -170,13 +170,13 @@ impl PrProvider for AzureDevOpsProvider {
         let pr = mapper::map_pull_request(&ado_pr, &self.name, self.client.base_url());
 
         // Fetch policy evaluations
-        let policies = match self
+        let (policies, policies_loaded) = match self
             .client
             .get_policy_evaluations(&pr_id.project, pr_id.number)
             .await
         {
-            Ok(evals) => evals.iter().map(mapper::map_policy_evaluation).collect(),
-            Err(_) => Vec::new(),
+            Ok(evals) => (evals.iter().map(mapper::map_policy_evaluation).collect(), true),
+            Err(_) => (Vec::new(), false),
         };
 
         Ok(PrDetail {
@@ -184,6 +184,7 @@ impl PrProvider for AzureDevOpsProvider {
             diff_stats: None,
             build_status: None,
             policies,
+            policies_loaded,
         })
     }
 

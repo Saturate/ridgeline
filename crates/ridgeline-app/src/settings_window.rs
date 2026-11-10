@@ -349,16 +349,19 @@ impl SettingsWindow {
                                 // Removed from config.toml while the dialog was open.
                                 return true;
                             };
-                            // A case-only rename points at the same token file, so
-                            // copying then deleting would delete the token itself.
-                            if !original.eq_ignore_ascii_case(&name) {
+                            // Read, delete, then write: on case-insensitive disks a
+                            // case-only rename is the same file, so copy-then-delete
+                            // would delete the token; on case-sensitive ones (Linux)
+                            // the file still has to move.
+                            if *original != name {
                                 if let Ok(old_token) = credentials::get_token(original) {
+                                    let _ = credentials::delete_token(original);
                                     if credentials::store_token(&name, &old_token).is_err() {
-                                        // Keep the old name rather than end up with
-                                        // a provider whose token is under another one.
+                                        // Put it back and keep the old name rather
+                                        // than leave the provider without a token.
+                                        let _ = credentials::store_token(original, &old_token);
                                         return false;
                                     }
-                                    let _ = credentials::delete_token(original);
                                 }
                             }
                             let ProviderConfig::AzureDevOps(ado) = &mut config.0.providers[idx];

@@ -77,6 +77,10 @@ pub struct PrDetail {
     pub diff_stats: Option<DiffStats>,
     pub build_status: Option<BuildStatus>,
     pub policies: Vec<PolicyStatus>,
+    /// False when the policy evaluations couldn't be fetched, so an empty
+    /// `policies` means "unknown" rather than "this repo has none".
+    #[serde(default)]
+    pub policies_loaded: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

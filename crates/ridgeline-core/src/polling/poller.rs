@@ -19,6 +19,8 @@ impl Poller {
         let mut all_reviewing = Vec::new();
         let mut all_authored = Vec::new();
         let mut errors = Vec::new();
+        let mut failed_reviewing = Vec::new();
+        let mut failed_authored = Vec::new();
 
         let review_futures: Vec<_> = self
             .providers
@@ -52,14 +54,20 @@ impl Poller {
         for (name, result) in review_results {
             match result {
                 Ok(prs) => all_reviewing.extend(prs),
-                Err(e) => errors.push(poll_error(name, e)),
+                Err(e) => {
+                    failed_reviewing.push(name.clone());
+                    errors.push(poll_error(name, e));
+                }
             }
         }
 
         for (name, result) in authored_results {
             match result {
                 Ok(prs) => all_authored.extend(prs),
-                Err(e) => errors.push(poll_error(name, e)),
+                Err(e) => {
+                    failed_authored.push(name.clone());
+                    errors.push(poll_error(name, e));
+                }
             }
         }
 
@@ -67,6 +75,8 @@ impl Poller {
             reviewing: all_reviewing,
             authored: all_authored,
             errors,
+            failed_reviewing,
+            failed_authored,
         }
     }
 }
