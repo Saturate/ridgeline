@@ -1,0 +1,21 @@
+name: Changeset Check
+
+on:
+  pull_request:
+    branches: [master]
+    types: [opened, synchronize, reopened]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write # the summary comment
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: saturate/changesetter/actions/check@v1
+        with:
+          version: "0.5.2"
+          comment: true

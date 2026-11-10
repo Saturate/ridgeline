@@ -114,7 +114,12 @@ jobs:
         shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          BODY=$(sed -n "/^## \[${VERSION}\]/,/^## \[/{/^## \[${VERSION}\]/d;/^## \[/d;p;}" CHANGELOG.md)
+          # changesetter writes "## 0.9.0 - date"; older git-cliff entries are
+          # "## [0.8.0] - date". Take everything up to the next "## " heading.
+          BODY=$(awk -v v="$VERSION" '
+            /^## / { if (found) exit; h=$2; gsub(/[\[\]]/, "", h); if (h == v) { found=1; next } }
+            found { print }
+          ' CHANGELOG.md)
           echo "body<<CHANGELOG_EOF" >> "$GITHUB_OUTPUT"
           echo "$BODY" >> "$GITHUB_OUTPUT"
           echo "CHANGELOG_EOF" >> "$GITHUB_OUTPUT"
