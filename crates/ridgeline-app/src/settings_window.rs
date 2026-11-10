@@ -235,7 +235,7 @@ impl SettingsWindow {
                 AuthMethod::Pat => fields.child(labeled_field(
                     "Personal access token",
                     &pat_input,
-                    "Needs Code (Read) scope. Stored in the system keychain.",
+                    "Needs Code (Read) scope. Saved as a plain file in Ridgeline's config folder.",
                 )),
                 AuthMethod::AzureCli => fields.child(
                     div()
