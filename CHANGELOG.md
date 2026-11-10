@@ -1,5 +1,13 @@
 # Changelog
 
+
+## [0.8.0] - 2026-11-10
+
+
+### Features
+
+- Rewrite Ridgeline as a native GPUI app (#12)
+
 ## [0.7.0] - 2026-06-02
 
 
@@ -9,7 +17,9 @@
 
 ### Bug Fixes
 
-- Distinguish abandoned from completed PR notifications (#9)## [0.6.0] - 2026-05-29
+- Distinguish abandoned from completed PR notifications (#9)
+
+## [0.6.0] - 2026-05-29
 
 
 ### Features
@@ -28,7 +38,9 @@
 ### Miscellaneous
 
 - List features before bug fixes in changelog
-- Exclude CI commits from changelog## [0.5.0] - 2026-05-21
+- Exclude CI commits from changelog
+
+## [0.5.0] - 2026-05-21
 
 
 ### Features
@@ -47,7 +59,9 @@
 
 ### Miscellaneous
 
-- Update Cargo.lock to v0.4.0## [0.4.0] - 2026-05-19
+- Update Cargo.lock to v0.4.0
+
+## [0.4.0] - 2026-05-19
 
 
 ### Features
@@ -64,7 +78,9 @@
 
 - Add screenshot and demo mode for mock data
 - Add Homebrew install instructions
-- Add macOS Gatekeeper workaround to README## [0.3.0] - 2026-05-19
+- Add macOS Gatekeeper workaround to README
+
+## [0.3.0] - 2026-05-19
 
 
 ### Features
@@ -73,7 +89,9 @@
 
 ### Miscellaneous
 
-- Add AGPL-3.0 license## [0.2.0] - 2026-05-18
+- Add AGPL-3.0 license
+
+## [0.2.0] - 2026-05-18
 
 
 ### Features
@@ -83,9 +101,13 @@
 
 ### Documentation
 
-- Add README## [0.1.0] - 2026-03-02
+- Add README
+
+## [0.1.0] - 2026-03-02
 
 
 ### Features
 
 - Initial ridgeline TUI for PR monitoring
+
+
