@@ -71,7 +71,11 @@ pub fn passes(filter: &TabFilter, pr: &PullRequest, me: Option<&str>, now: DateT
     }
     match filter.assigned {
         Some(Assigned::Direct) if mine.is_none() => return false,
-        Some(Assigned::Indirect) if mine.is_some() => return false,
+        // Your own PRs never list you as a reviewer, but they didn't reach
+        // you through a team either.
+        Some(Assigned::Indirect) if mine.is_some() || me == Some(pr.author.id.as_str()) => {
+            return false;
+        }
         _ => {}
     }
     if filter.required_only && !mine.is_some_and(|r| r.is_required) {
@@ -92,7 +96,12 @@ pub fn passes(filter: &TabFilter, pr: &PullRequest, me: Option<&str>, now: DateT
         return false;
     }
 
-    if let Some(prefix) = filter.target_branch.as_deref().filter(|p| !p.is_empty()) {
+    if let Some(prefix) = filter
+        .target_branch
+        .as_deref()
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+    {
         if !pr
             .target_branch
             .to_lowercase()
@@ -253,6 +262,8 @@ mod tests {
         assert!(passes(&required, &direct, Some("me"), now));
         // A required team entry isn't you being required.
         assert!(!passes(&required, &via_team, Some("me"), now));
+        // Your own PR (the fixture's author id is "a") isn't "via team".
+        assert!(!passes(&only_indirect, &via_team, Some("a"), now));
     }
 
     #[test]

@@ -74,7 +74,7 @@ fn summary(tab: &TabConfig) -> String {
     match (tab.filter.min_age_days, tab.filter.max_age_days) {
         (Some(min), Some(max)) => parts.push(format!("{min}-{max} days old")),
         (Some(min), None) => parts.push(format!("older than {min} days")),
-        (None, Some(max)) => parts.push(format!("newer than {max} days")),
+        (None, Some(max)) => parts.push(format!("up to {max} days old")),
         (None, None) => {}
     }
     if let Some(target) = &tab.filter.target_branch {
@@ -245,8 +245,23 @@ impl TabMoreInputs {
         let (Ok(min), Ok(max)) = (days(&self.min_age), days(&self.max_age)) else {
             return false;
         };
-        filter.repos = ridgeline_core::filters::parse_patterns(&text(&self.repos));
-        filter.authors = ridgeline_core::filters::parse_patterns(&text(&self.authors));
+        // "Older than 10, up to 5" can never match anything.
+        if let (Some(min), Some(max)) = (min, max) {
+            if min > max {
+                return false;
+            }
+        }
+        // Lists are shown joined with ", ". Only re-split a field the user
+        // edited: a pattern written in config.toml can contain a comma
+        // ("Doe, John") and would otherwise be split on an untouched save.
+        let update = |list: &mut Vec<String>, input: &Entity<InputState>| {
+            let t = text(input);
+            if t != list.join(", ") {
+                *list = ridgeline_core::filters::parse_patterns(&t);
+            }
+        };
+        update(&mut filter.repos, &self.repos);
+        update(&mut filter.authors, &self.authors);
         let target = text(&self.target_branch);
         filter.target_branch = (!target.is_empty()).then_some(target);
         filter.min_age_days = min;
@@ -480,31 +495,33 @@ impl SettingsWindow {
                             labeled_field("Repos", &more.repos, "Provider, project or repo; ! excludes"),
                             labeled_field("Authors", &more.authors, "Name or email; ! excludes"),
                         ))
-                        .child(pair(
-                            choice(
-                                "Assigned",
-                                "tab-assigned",
-                                vec![
-                                    (None, "Any"),
-                                    (Some(Assigned::Direct), "To me"),
-                                    (Some(Assigned::Indirect), "Via team"),
-                                ],
-                                tab.filter.assigned.clone(),
-                                draft.clone(),
-                                |t, v| t.filter.assigned = v,
-                            ),
-                            choice(
-                                "Required",
-                                "tab-required",
-                                vec![(false, "Any"), (true, "Only mine")],
-                                tab.filter.required_only,
-                                draft.clone(),
-                                |t, v| t.filter.required_only = v,
-                            ),
-                        ))
+                        .when(tab.source != TabSource::Authored, |form| {
+                            form.child(pair(
+                                choice(
+                                    "Assigned",
+                                    "tab-assigned",
+                                    vec![
+                                        (None, "Any"),
+                                        (Some(Assigned::Direct), "To me"),
+                                        (Some(Assigned::Indirect), "Via team"),
+                                    ],
+                                    tab.filter.assigned.clone(),
+                                    draft.clone(),
+                                    |t, v| t.filter.assigned = v,
+                                ),
+                                choice(
+                                    "Required",
+                                    "tab-required",
+                                    vec![(false, "Any"), (true, "Only mine")],
+                                    tab.filter.required_only,
+                                    draft.clone(),
+                                    |t, v| t.filter.required_only = v,
+                                ),
+                            ))
+                        })
                         .child(pair(
                             labeled_field("Older than (days)", &more.min_age, "e.g. 7 for a stale tab"),
-                            labeled_field("Newer than (days)", &more.max_age, "Empty for any"),
+                            labeled_field("Up to (days old)", &more.max_age, "Empty for any"),
                         ))
                         .child(pair(
                             labeled_field("Target branch", &more.target_branch, "Prefix, e.g. release/"),
@@ -588,6 +605,9 @@ impl SettingsWindow {
                         }
                         if tab.source != TabSource::Authored {
                             tab.filter.waiting_on = None;
+                        } else {
+                            tab.filter.assigned = None;
+                            tab.filter.required_only = false;
                         }
 
                         update_tabs(cx, |tabs| match &original {

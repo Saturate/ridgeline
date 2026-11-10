@@ -15,7 +15,7 @@ Native Rust app built with [GPUI](https://www.gpui.rs) via [GPUI Kit](https://cr
 
 - **Cross-tenant overview**: connect multiple Azure DevOps organizations, each with its own color
 - **Sign in your way**: a Personal Access Token or your existing `az login` session, per organization
-- **Configurable tabs**: Reviewing (minus PRs you've already approved), Your turn (conflicts, failed builds, open comments, or a reviewer waiting on you) and Waiting for review by default; add your own with filters
+- **Configurable tabs**: Reviewing (minus PRs you've already approved, in new configs), Your turn (conflicts, failed builds, open comments, or a reviewer waiting on you) and Waiting for review by default; add your own with filters
 - **Vote summary**: see approval progress, rejections, and "waiting for author" at a glance
 - **Filters**: per-tab filters for repos, authors, how you're assigned, age, branches, drafts, commit type and more (see [Tab filters](#tab-filters)), plus search across titles, authors, repos, branches and PR numbers
 - **Native notifications**: configurable OS notifications for new PRs, vote changes, and build failures
@@ -80,19 +80,19 @@ min_age_days = 7
 
 | Filter | Values | Keeps PRs that |
 |---|---|---|
-| `repos` | list of patterns | match a provider, project or repository name |
+| `repos` | list of patterns | match a provider, project or repository name, or `project/repo` |
 | `authors` | list of patterns | match the author's name or email |
-| `assigned` | `direct`, `indirect` | list you as a reviewer yourself, or only reach you through a team or configured project |
-| `required_only` | `true` | have you as a required reviewer |
+| `assigned` | `direct`, `indirect` | list you as a reviewer yourself, or only reach you through a team or configured project; not on authored tabs |
+| `required_only` | `true` | have you yourself as a required reviewer (a required team doesn't count); not on authored tabs |
 | `hide_approved_by_me` | `true` | you haven't approved yet |
-| `waiting_on` | `author`, `reviewers` | need something from the author (conflicts, failed build, open comments, pushback) or not; authored tabs only |
+| `waiting_on` | `author`, `reviewers` | need something from the author (conflicts, failed build, open comments, pushback), or are waiting on reviewers; authored tabs only |
 | `drafts` | `hide`, `only` | are or aren't drafts |
 | `max_reviewers` | number | have at most this many reviewers (`0` finds unassigned PRs) |
-| `min_age_days`, `max_age_days` | number | were opened at least / at most this many days ago |
+| `min_age_days`, `max_age_days` | number | were opened at least / at most this many whole days ago |
 | `branch_prefix`, `target_branch` | text | come from / go into a branch starting with this |
 | `cc_types` | list, e.g. `["feat", "fix"]` | have a conventional-commit title of one of these types |
 
-Patterns match case-insensitively anywhere in the name. A leading `!` excludes; when a list has any non-`!` pattern, a PR has to match at least one of them.
+Patterns match case-insensitively anywhere in the name. In Settings, separate patterns with commas; in `config.toml` they're a list, so a pattern can contain a comma there (`"Doe, John"`). A leading `!` excludes; when a list has any non-`!` pattern, a PR has to match at least one of them.
 
 ## Development
 

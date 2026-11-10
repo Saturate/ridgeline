@@ -55,8 +55,6 @@ pub struct PullRequest {
 }
 
 impl PullRequest {
-    /// True when the author has something to fix: merge conflicts, a failing
-    /// build, unresolved reviewer comments, or a reviewer pushed back.
     /// Whether `user_id` is a reviewer on this PR and has approved it.
     pub fn is_approved_by(&self, user_id: &str) -> bool {
         self.reviewers.iter().any(|r| {
@@ -64,6 +62,8 @@ impl PullRequest {
         })
     }
 
+    /// True when the author has something to fix: merge conflicts, a failing
+    /// build, unresolved reviewer comments, or a reviewer pushed back.
     pub fn is_waiting_on_author(&self) -> bool {
         let pushed_back = self
             .reviewers
