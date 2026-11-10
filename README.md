@@ -1,6 +1,6 @@
 # Ridgeline
 
-Cross-tenant, cross-project pull request monitor for Azure DevOps. See all your PRs in one place — across organizations, projects, and repositories.
+Cross-tenant, cross-project pull request monitor for Azure DevOps. See all your PRs in one place, across organizations, projects, and repositories.
 
 Native Rust app built with [GPUI](https://www.gpui.rs) via [GPUI Kit](https://crates.io/crates/gpui-kit).
 
@@ -8,14 +8,16 @@ Native Rust app built with [GPUI](https://www.gpui.rs) via [GPUI Kit](https://cr
 
 ## Features
 
-- **Cross-tenant overview** — connect multiple Azure DevOps organizations
-- **Configurable tabs**: Reviewing, Your turn (conflicts, failed builds, open comments, or a reviewer waiting on you) and Waiting for review by default; add your own with filters
-- **Vote summary** — see approval progress, rejections, and "waiting for author" at a glance
-- **Filters**: per-tab filters for drafts, reviewer count, branch prefix and commit type, plus search across titles, authors, repos, branches and PR numbers
-- **Native notifications** — configurable OS notifications for new PRs, vote changes, and build failures
-- **Background polling** — automatic refresh with configurable interval
-- **Dark mode** — follows system preference
-- **MCP server** — expose PR data to AI coding tools via `ridgeline --mcp-stdio`
+- **Cross-tenant overview**: connect multiple Azure DevOps organizations, each with its own color
+- **Sign in your way**: a Personal Access Token or your existing `az login` session, per organization
+- **Configurable tabs**: Reviewing (minus PRs you've already approved), Your turn (conflicts, failed builds, open comments, or a reviewer waiting on you) and Waiting for review by default; add your own with filters
+- **Vote summary**: see approval progress, rejections, and "waiting for author" at a glance
+- **Filters**: per-tab filters for drafts, reviewer count, branch prefix, commit type and PRs you approved, plus search across titles, authors, repos, branches and PR numbers
+- **Native notifications**: configurable OS notifications for new PRs, vote changes, and build failures
+- **Background polling**: automatic refresh with configurable interval
+- **Themes**: bundled Zed themes, with separate light and dark picks that follow your OS
+- **Settings in the app or as TOML**: edit `config.toml` by hand and changes apply within a couple of seconds
+- **MCP server**: expose PR data to AI coding tools via `ridgeline --mcp-stdio`
 
 ## Install
 
@@ -48,9 +50,12 @@ xattr -cr /Applications/Ridgeline.app
 
 ## Getting started
 
-On first launch, add your Azure DevOps provider with an organization URL and a [Personal Access Token](https://learn.microsoft.com/en-us/azure/devops/organizations/accounts/use-personal-access-tokens-to-authenticate) with **Code (Read)** scope.
+On first launch, open Settings and add your Azure DevOps organization URL. Sign in with either:
 
-Config is stored at `~/Library/Application Support/ridgeline/` (macOS) or `~/.config/ridgeline/` (Linux).
+- a [Personal Access Token](https://learn.microsoft.com/en-us/azure/devops/organizations/accounts/use-personal-access-tokens-to-authenticate) with **Code (Read)** scope, or
+- **Azure CLI**: Ridgeline reuses your `az login` session, so run that first.
+
+Config is stored in `config.toml` at `~/Library/Application Support/ridgeline/` (macOS), `~/.config/ridgeline/` (Linux) or `%APPDATA%\ridgeline\` (Windows). Tokens are saved as plain files in the same folder.
 
 ## Development
 
