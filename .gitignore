@@ -1,9 +1,5 @@
-# dependencies
-node_modules
-
 # build
-dist
-src-tauri/target
+/target
 
 # env
 .env
@@ -14,3 +10,4 @@ src-tauri/target
 .idea
 *.swp
 *.swo
+/dist
