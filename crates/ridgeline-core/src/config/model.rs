@@ -214,6 +214,17 @@ pub enum WaitingOn {
     Reviewers,
 }
 
+/// How you ended up on a PR's reviewer list.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum Assigned {
+    /// You're a reviewer yourself.
+    Direct,
+    /// You're not on it personally: it came through a team you're in or a
+    /// project configured for the provider.
+    Indirect,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TabFilter {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -231,6 +242,27 @@ pub struct TabFilter {
     /// doesn't mean you looked at it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub hide_approved_by_me: bool,
+    /// Patterns matched against provider, project and repository names.
+    /// A leading `!` excludes; see `crate::filters::matches_patterns`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub repos: Vec<String>,
+    /// Patterns matched against the author's display name and email.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub authors: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assigned: Option<Assigned>,
+    /// Only PRs where your own reviewer entry is marked required.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub required_only: bool,
+    /// Only PRs opened at least this many days ago.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_age_days: Option<u32>,
+    /// Only PRs opened at most this many days ago.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_age_days: Option<u32>,
+    /// Target branch prefix, e.g. `release/`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_branch: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

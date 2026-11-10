@@ -1,5 +1,10 @@
 # Ridgeline
 
+[![Build](https://github.com/Saturate/ridgeline/actions/workflows/build.yml/badge.svg?branch=master)](https://github.com/Saturate/ridgeline/actions/workflows/build.yml)
+[![Release](https://img.shields.io/github/v/release/Saturate/ridgeline)](https://github.com/Saturate/ridgeline/releases/latest)
+[![WinGet](https://img.shields.io/winget/v/Saturate.Ridgeline)](https://github.com/microsoft/winget-pkgs/tree/master/manifests/s/Saturate/Ridgeline)
+[![License: AGPL-3.0](https://img.shields.io/github/license/Saturate/ridgeline)](LICENSE)
+
 Cross-tenant, cross-project pull request monitor for Azure DevOps. See all your PRs in one place, across organizations, projects, and repositories.
 
 Native Rust app built with [GPUI](https://www.gpui.rs) via [GPUI Kit](https://crates.io/crates/gpui-kit).
@@ -12,7 +17,7 @@ Native Rust app built with [GPUI](https://www.gpui.rs) via [GPUI Kit](https://cr
 - **Sign in your way**: a Personal Access Token or your existing `az login` session, per organization
 - **Configurable tabs**: Reviewing (minus PRs you've already approved), Your turn (conflicts, failed builds, open comments, or a reviewer waiting on you) and Waiting for review by default; add your own with filters
 - **Vote summary**: see approval progress, rejections, and "waiting for author" at a glance
-- **Filters**: per-tab filters for drafts, reviewer count, branch prefix, commit type and PRs you approved, plus search across titles, authors, repos, branches and PR numbers
+- **Filters**: per-tab filters for repos, authors, how you're assigned, age, branches, drafts, commit type and more (see [Tab filters](#tab-filters)), plus search across titles, authors, repos, branches and PR numbers
 - **Native notifications**: configurable OS notifications for new PRs, vote changes, and build failures
 - **Background polling**: automatic refresh with configurable interval
 - **Themes**: bundled Zed themes, with separate light and dark picks that follow your OS
@@ -56,6 +61,38 @@ On first launch, open Settings and add your Azure DevOps organization URL. Sign 
 - **Azure CLI**: Ridgeline reuses your `az login` session, so run that first.
 
 Config is stored in `config.toml` at `~/Library/Application Support/ridgeline/` (macOS), `~/.config/ridgeline/` (Linux) or `%APPDATA%\ridgeline\` (Windows). Tokens are saved as plain files in the same folder.
+
+## Tab filters
+
+Each tab picks a source (`reviewing`, `authored` or `all`) and any of these filters. Set them in Settings → Tabs, or in `config.toml`:
+
+```toml
+[[general.tabs]]
+label = "Stale DCC reviews"
+source = "reviewing"
+
+[general.tabs.filter]
+repos = ["DCC Energi"]
+authors = ["!renovate", "!dependabot"]
+assigned = "direct"
+min_age_days = 7
+```
+
+| Filter | Values | Keeps PRs that |
+|---|---|---|
+| `repos` | list of patterns | match a provider, project or repository name |
+| `authors` | list of patterns | match the author's name or email |
+| `assigned` | `direct`, `indirect` | list you as a reviewer yourself, or only reach you through a team or configured project |
+| `required_only` | `true` | have you as a required reviewer |
+| `hide_approved_by_me` | `true` | you haven't approved yet |
+| `waiting_on` | `author`, `reviewers` | need something from the author (conflicts, failed build, open comments, pushback) or not; authored tabs only |
+| `drafts` | `hide`, `only` | are or aren't drafts |
+| `max_reviewers` | number | have at most this many reviewers (`0` finds unassigned PRs) |
+| `min_age_days`, `max_age_days` | number | were opened at least / at most this many days ago |
+| `branch_prefix`, `target_branch` | text | come from / go into a branch starting with this |
+| `cc_types` | list, e.g. `["feat", "fix"]` | have a conventional-commit title of one of these types |
+
+Patterns match case-insensitively anywhere in the name. A leading `!` excludes; when a list has any non-`!` pattern, a PR has to match at least one of them.
 
 ## Development
 

@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod config;
+pub mod filters;
 pub mod mcp;
 pub mod notifications;
 pub mod polling;

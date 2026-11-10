@@ -637,6 +637,7 @@ impl Ridgeline {
                 .collect(),
         };
 
+        let now = chrono::Utc::now();
         source_prs
             .into_iter()
             .filter(|pr| {
@@ -653,15 +654,13 @@ impl Ridgeline {
                         return false;
                     }
                 }
-                if tab.filter.hide_approved_by_me {
-                    let me = self
-                        .providers
-                        .iter()
-                        .find(|(p, _)| p.name() == pr.id.provider)
-                        .map(|(_, user)| user.id.as_str());
-                    if me.is_some_and(|id| pr.is_approved_by(id)) {
-                        return false;
-                    }
+                let me = self
+                    .providers
+                    .iter()
+                    .find(|(p, _)| p.name() == pr.id.provider)
+                    .map(|(_, user)| user.id.as_str());
+                if !ridgeline_core::filters::passes(&tab.filter, pr, me, now) {
+                    return false;
                 }
                 if let Some(max) = tab.filter.max_reviewers {
                     if pr.reviewers.len() as u32 > max {
