@@ -1,7 +1,8 @@
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
-use tokio::sync::OnceCell;
+use tokio::sync::Mutex;
 
 use super::client::AzureDevOpsClient;
 use super::mapper;
@@ -12,13 +13,20 @@ use crate::providers::traits::{PrProvider, ProviderError};
 use crate::providers::types::*;
 
 const TEAM_QUERY_CONCURRENCY: usize = 8;
+/// Joining a team, or adding Project and Team read to a token, shows up
+/// within this long without a restart.
+const TEAM_REFRESH: Duration = Duration::from_secs(15 * 60);
+
+struct TeamCache {
+    ids: Vec<String>,
+    fetched: Instant,
+}
 
 pub struct AzureDevOpsProvider {
     name: String,
     client: AzureDevOpsClient,
     projects: Vec<ProjectFilter>,
-    /// Team membership rarely changes, so it's looked up once per run.
-    team_ids: OnceCell<Vec<String>>,
+    teams: Mutex<Option<TeamCache>>,
 }
 
 impl AzureDevOpsProvider {
@@ -27,7 +35,7 @@ impl AzureDevOpsProvider {
             name: config.name.clone(),
             client: AzureDevOpsClient::new(&config.url, pat),
             projects: config.projects.clone(),
-            team_ids: OnceCell::new(),
+            teams: Mutex::new(None),
         }
     }
 
@@ -36,7 +44,7 @@ impl AzureDevOpsProvider {
             name: config.name.clone(),
             client: AzureDevOpsClient::with_credential(&config.url, credential),
             projects: config.projects.clone(),
-            team_ids: OnceCell::new(),
+            teams: Mutex::new(None),
         }
     }
 
@@ -45,7 +53,7 @@ impl AzureDevOpsProvider {
             name: name.to_string(),
             client: AzureDevOpsClient::new(url, pat),
             projects: Vec::new(),
-            team_ids: OnceCell::new(),
+            teams: Mutex::new(None),
         }
     }
 
@@ -76,9 +84,8 @@ impl AzureDevOpsProvider {
 
         // Built up front: a closure in `.map()` trips the Send bound async_trait
         // puts on the returned future.
-        let queries: Vec<_> = self
-            .team_ids()
-            .await?
+        let team_ids = self.team_ids().await?;
+        let queries: Vec<_> = team_ids
             .iter()
             .map(|id| async move {
                 match self.client.list_pull_requests_org(Some(id), None).await {
@@ -103,32 +110,59 @@ impl AzureDevOpsProvider {
     }
 
     /// A PAT without the Project and Team (Read) scope gets 401/403 here,
-    /// while the PR queries before it went through.
-    /// That is a setup choice, not an outage, so it's logged once and the
-    /// direct reviews carry on. Any other failure is returned so the poller
-    /// keeps the previous list instead of reporting team PRs as gone.
-    async fn team_ids(&self) -> Result<&[String], ProviderError> {
-        let result = self
-            .team_ids
-            .get_or_try_init(|| async {
-                let teams = self.client.list_my_teams().await?;
-                Ok::<_, ProviderError>(teams.into_iter().map(|t| t.id).collect())
-            })
-            .await;
-        match result {
-            Ok(ids) => Ok(ids),
+    /// while the PR queries before it went through. With no list from
+    /// earlier that's a setup choice, not an outage, so it counts as no teams
+    /// until the next refresh. Any other failure falls back to the teams from
+    /// last time, or, on the first lookup, is returned so the poller keeps the
+    /// previous list instead of reporting team PRs as gone.
+    async fn team_ids(&self) -> Result<Vec<String>, ProviderError> {
+        // Held across the fetch so concurrent polls share one lookup.
+        let mut cache = self.teams.lock().await;
+        if let Some(fresh) = cache
+            .as_ref()
+            .filter(|c| c.fetched.elapsed() < TEAM_REFRESH)
+        {
+            return Ok(fresh.ids.clone());
+        }
+        let ids = match self.client.list_my_teams().await {
+            Ok(teams) => teams.into_iter().map(|t| t.id).collect(),
+            // With a list from earlier, a 401/403 is more likely a blip than a
+            // scope that was just removed, and emptying it would make every
+            // team PR vanish and come back later as "new". Team PR queries
+            // only need Code read, so the old list keeps working either way.
+            Err(ProviderError::Denied { .. })
+                if cache.as_ref().is_some_and(|c| !c.ids.is_empty()) =>
+            {
+                eprintln!(
+                    "provider {}: team refresh was refused, using last list",
+                    self.name
+                );
+                return Ok(cache.as_ref().map_or_else(Vec::new, |c| c.ids.clone()));
+            }
             Err(ProviderError::Denied { message, .. }) => {
                 eprintln!(
                     "provider {}: can't list your teams, so PRs assigned to them are skipped \
                      (the token needs Project and Team read access): {message}",
                     self.name
                 );
-                // Loses to a concurrent init that did succeed; use its ids then.
-                let _ = self.team_ids.set(Vec::new());
-                Ok(self.team_ids.get().map_or(&[], Vec::as_slice))
+                Vec::new()
             }
-            Err(e) => Err(e),
-        }
+            Err(e) => {
+                let Some(stale) = cache.as_ref() else {
+                    return Err(e);
+                };
+                eprintln!(
+                    "provider {}: team refresh failed, using last list: {e}",
+                    self.name
+                );
+                return Ok(stale.ids.clone());
+            }
+        };
+        *cache = Some(TeamCache {
+            ids: ids.clone(),
+            fetched: Instant::now(),
+        });
+        Ok(ids)
     }
 
     /// Fetch PRs org-wide for the user, plus any extras from configured projects.
