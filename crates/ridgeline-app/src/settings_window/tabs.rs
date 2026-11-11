@@ -57,6 +57,11 @@ fn summary(tab: &TabConfig) -> String {
     if tab.filter.hide_approved_by_me {
         parts.push("hides your approvals".into());
     }
+    match tab.filter.sent_back {
+        Some(DraftFilter::Hide) => parts.push("hides sent back".into()),
+        Some(DraftFilter::Only) => parts.push("sent back by you".into()),
+        _ => {}
+    }
     match tab.filter.assigned {
         Some(Assigned::Direct) => parts.push("assigned to you".into()),
         Some(Assigned::Indirect) => parts.push("via team".into()),
@@ -365,6 +370,9 @@ impl SettingsWindow {
         if initial.filter.drafts == Some(DraftFilter::Show) {
             initial.filter.drafts = None;
         }
+        if initial.filter.sent_back == Some(DraftFilter::Show) {
+            initial.filter.sent_back = None;
+        }
 
         let max_text = initial
             .filter
@@ -518,6 +526,24 @@ impl SettingsWindow {
                                     |t, v| t.filter.required_only = v,
                                 ),
                             ))
+                            .child(pair(
+                                v_flex().gap_1().child(choice(
+                                    "Sent back by you",
+                                    "tab-sent-back",
+                                    vec![
+                                        (None, "Show"),
+                                        (Some(DraftFilter::Hide), "Hide"),
+                                        (Some(DraftFilter::Only), "Only"),
+                                    ],
+                                    tab.filter.sent_back.clone(),
+                                    draft.clone(),
+                                    |t, v| t.filter.sent_back = v,
+                                ))
+                                .child(div().text_xs().child(
+                                    "Your vote is Waiting for author or Rejected.",
+                                )),
+                                div(),
+                            ))
                         })
                         .child(pair(
                             labeled_field("Older than (days)", &more.min_age, "e.g. 7 for a stale tab"),
@@ -608,6 +634,7 @@ impl SettingsWindow {
                         } else {
                             tab.filter.assigned = None;
                             tab.filter.required_only = false;
+                            tab.filter.sent_back = None;
                         }
 
                         update_tabs(cx, |tabs| match &original {

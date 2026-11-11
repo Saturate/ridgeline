@@ -2,8 +2,8 @@
 
 use chrono::{DateTime, Utc};
 
-use crate::config::model::{Assigned, TabFilter};
-use crate::providers::types::PullRequest;
+use crate::config::model::{Assigned, DraftFilter, TabFilter};
+use crate::providers::types::{PullRequest, Vote};
 
 /// Matches `candidates` against include/exclude patterns, case-insensitively
 /// by substring. Patterns starting with `!` exclude. With no include
@@ -68,6 +68,12 @@ pub fn passes(filter: &TabFilter, pr: &PullRequest, me: Option<&str>, now: DateT
     let mine = me.and_then(|id| pr.reviewers.iter().find(|r| r.user.id == id));
     if filter.hide_approved_by_me && me.is_some_and(|id| pr.is_approved_by(id)) {
         return false;
+    }
+    let sent_back = mine.is_some_and(|r| matches!(r.vote, Vote::WaitingForAuthor | Vote::Rejected));
+    match filter.sent_back {
+        Some(DraftFilter::Hide) if sent_back => return false,
+        Some(DraftFilter::Only) if !sent_back => return false,
+        _ => {}
     }
     match filter.assigned {
         Some(Assigned::Direct) if mine.is_none() => return false,
@@ -318,6 +324,61 @@ mod tests {
         };
         assert!(!passes(&hide, &approved, Some("me"), now));
         assert!(passes(&hide, &approved, Some("someone-else"), now));
+    }
+
+    #[test]
+    fn sent_back_by_you() {
+        let now = Utc::now();
+        let hide = TabFilter {
+            sent_back: Some(DraftFilter::Hide),
+            ..filter()
+        };
+        let only = TabFilter {
+            sent_back: Some(DraftFilter::Only),
+            ..filter()
+        };
+        let waiting = pr(1, vec![reviewer("me", Vote::WaitingForAuthor, false)]);
+        let rejected = pr(1, vec![reviewer("me", Vote::Rejected, false)]);
+        let untouched = pr(1, vec![reviewer("me", Vote::NoVote, false)]);
+        // Someone else sending it back still leaves it waiting on you.
+        let others = pr(
+            1,
+            vec![
+                reviewer("me", Vote::NoVote, false),
+                reviewer("bob", Vote::WaitingForAuthor, false),
+            ],
+        );
+
+        for sent in [&waiting, &rejected] {
+            assert!(!passes(&hide, sent, Some("me"), now));
+            assert!(passes(&only, sent, Some("me"), now));
+        }
+        for open in [&untouched, &others] {
+            assert!(passes(&hide, open, Some("me"), now));
+            assert!(!passes(&only, open, Some("me"), now));
+        }
+        // Without knowing who you are, nothing counts as sent back by you.
+        assert!(passes(&hide, &waiting, None, now));
+        assert!(!passes(&only, &waiting, None, now));
+    }
+
+    #[test]
+    fn default_reviewing_and_sent_back_tabs_split_reviews() {
+        let tabs = crate::config::model::GeneralConfig::default().tabs;
+        let reviewing = &tabs[0].filter;
+        let sent_back = &tabs[1].filter;
+        let now = Utc::now();
+        for vote in [Vote::NoVote, Vote::WaitingForAuthor, Vote::Rejected] {
+            let pr = pr(1, vec![reviewer("me", vote, false)]);
+            assert_ne!(
+                passes(reviewing, &pr, Some("me"), now),
+                passes(sent_back, &pr, Some("me"), now)
+            );
+        }
+        // Approved ones are done: in neither tab.
+        let approved = pr(1, vec![reviewer("me", Vote::Approved, false)]);
+        assert!(!passes(reviewing, &approved, Some("me"), now));
+        assert!(!passes(sent_back, &approved, Some("me"), now));
     }
 }
 
