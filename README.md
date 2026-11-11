@@ -15,7 +15,7 @@ Native Rust app built with [GPUI](https://www.gpui.rs) via [GPUI Kit](https://cr
 
 - **Cross-tenant overview**: connect multiple Azure DevOps organizations, each with its own color
 - **Sign in your way**: a Personal Access Token or your existing `az login` session, per organization
-- **Configurable tabs**: Reviewing (minus PRs you've already approved or sent back to the author, in new configs), Sent back (PRs where you voted Waiting for author or Rejected), Your turn (conflicts, failed builds, open comments, or a reviewer waiting on you) and Waiting for review by default; add your own with filters
+- **Configurable tabs**: Reviewing (minus PRs you've already approved or sent back to the author, in new configs), Sent back (PRs where you voted Waiting for author or Rejected), Your turn (conflicts, failed builds, open comments, or a reviewer waiting on you), Waiting for review, and Other (everything the rest don't list) by default; add your own with filters
 - **Vote summary**: see approval progress, rejections, and "waiting for author" at a glance
 - **Filters**: per-tab filters for repos, authors, how you're assigned, age, branches, drafts, commit type and more (see [Tab filters](#tab-filters)), plus search across titles, authors, repos, branches and PR numbers
 - **Native notifications**: configurable OS notifications for new PRs, vote changes, and build failures
@@ -85,6 +85,7 @@ min_age_days = 7
 | `assigned` | `direct`, `indirect` | list you as a reviewer yourself, or only reach you through a team or configured project; not on authored tabs |
 | `required_only` | `true` | have you yourself as a required reviewer (a required team doesn't count); not on authored tabs |
 | `hide_approved_by_me` | `true` | you haven't approved yet |
+| `hide_shown_elsewhere` | `true` | no other enabled tab lists (tabs with this set don't count); the default Other tab uses it to catch approvals, drafts and anything else filtered out |
 | `sent_back` | `hide`, `only` | do or don't have your own vote at Waiting for author or Rejected; the default Sent back tab uses `only`; not on authored tabs |
 | `waiting_on` | `author`, `reviewers` | need something from the author (conflicts, failed build, open comments, pushback), or are waiting on reviewers; authored tabs only |
 | `drafts` | `hide`, `only` | are or aren't drafts |

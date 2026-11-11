@@ -638,6 +638,20 @@ impl Ridgeline {
                 .collect(),
         };
 
+        // Tabs with the flag, this one included, don't count as elsewhere.
+        // Search is left out: a PR another tab lists is still "shown" there
+        // when the current query happens to hide it.
+        let shown_elsewhere: std::collections::HashSet<&PrId> = if tab.filter.hide_shown_elsewhere {
+            self.enabled_tabs()
+                .into_iter()
+                .filter(|t| !t.filter.hide_shown_elsewhere)
+                .flat_map(|t| self.prs_for_tab(t, false))
+                .map(|pr| &pr.id)
+                .collect()
+        } else {
+            std::collections::HashSet::new()
+        };
+
         let now = chrono::Utc::now();
         // Assignment only describes PRs you review; on a My PRs tab it would
         // just hide or keep everything (the dialog hides it there too).
@@ -728,6 +742,7 @@ impl Ridgeline {
                 }
                 true
             })
+            .filter(|pr| !shown_elsewhere.contains(&pr.id))
             .collect()
     }
 
@@ -921,6 +936,11 @@ impl Ridgeline {
                 .filter(|_| t.source == TabSource::Authored);
             (&t.source, waiting_on)
         }) {
+            _ if tab.is_some_and(|t| t.filter.hide_shown_elsewhere)
+                && !(self.reviewing.is_empty() && self.authored.is_empty()) =>
+            {
+                "Every PR is listed in another tab."
+            }
             _ if tab.is_some_and(|t| {
                 t.source != TabSource::Authored && t.filter.sent_back == Some(DraftFilter::Only)
             }) =>
