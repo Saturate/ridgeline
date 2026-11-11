@@ -57,6 +57,9 @@ fn summary(tab: &TabConfig) -> String {
     if tab.filter.hide_approved_by_me {
         parts.push("hides your approvals".into());
     }
+    if tab.filter.hide_shown_elsewhere {
+        parts.push("only what other tabs don't list".into());
+    }
     match tab.filter.sent_back {
         Some(DraftFilter::Hide) => parts.push("hides sent back".into()),
         Some(DraftFilter::Only) => parts.push("sent back by you".into()),
@@ -594,6 +597,22 @@ impl SettingsWindow {
                                 draft.clone(),
                                 |t, v| t.filter.hide_approved_by_me = v,
                             ),
+                        ))
+                        .child(pair(
+                            v_flex()
+                                .gap_1()
+                                .child(choice(
+                                    "Shown in other tabs",
+                                    "tab-shown-elsewhere",
+                                    vec![(false, "Show"), (true, "Hide")],
+                                    tab.filter.hide_shown_elsewhere,
+                                    draft.clone(),
+                                    |t, v| t.filter.hide_shown_elsewhere = v,
+                                ))
+                                .child(div().text_xs().child(
+                                    "Hide lists only what no other enabled tab does.",
+                                )),
+                            div(),
                         ))
                         .child(
                             v_flex()

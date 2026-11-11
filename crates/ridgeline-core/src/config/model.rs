@@ -157,6 +157,18 @@ pub fn default_tabs() -> Vec<TabConfig> {
                 ..TabFilter::default()
             },
         },
+        // Without it, approvals, drafts and anything a custom filter drops
+        // are counted in the status bar but listed nowhere.
+        TabConfig {
+            label: "Other".into(),
+            source: TabSource::All,
+            display: TabDisplay::Reviewing,
+            enabled: true,
+            filter: TabFilter {
+                hide_shown_elsewhere: true,
+                ..TabFilter::default()
+            },
+        },
         TabConfig {
             label: "Up for grabs".into(),
             source: TabSource::All,
@@ -259,6 +271,11 @@ pub struct TabFilter {
     /// values as `drafts`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sent_back: Option<DraftFilter>,
+    /// Drop PRs that another enabled tab already lists, so a catch-all tab
+    /// shows what the rest hide. Tabs with this set don't count as "another
+    /// tab", which keeps two of them from depending on each other.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub hide_shown_elsewhere: bool,
     /// Patterns matched against provider, project and repository names.
     /// A leading `!` excludes; see `crate::filters::matches_patterns`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
