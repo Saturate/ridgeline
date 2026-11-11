@@ -115,7 +115,10 @@ pub async fn enrich_build_status(
     providers: &[(Arc<dyn PrProvider>, UserId)],
     cache: &mut std::collections::HashMap<String, CachedBuildStatus>,
 ) {
-    for pr in prs.iter_mut() {
+    use futures::StreamExt;
+
+    let mut queries = Vec::new();
+    for (i, pr) in prs.iter_mut().enumerate() {
         let commit_id = pr.source_commit_id.clone().unwrap_or_default();
 
         if let Some(cached) = cache.get(&pr.id.to_string()) {
@@ -125,38 +128,50 @@ pub async fn enrich_build_status(
             }
         }
 
-        let provider = providers.iter().find(|(p, _)| p.name() == pr.id.provider);
-
-        if let Some((provider, _)) = provider {
-            if let Ok(detail) = provider.get_detail(&pr.id).await {
-                let build_status = derive_build_status(&detail.policies);
-                // Running builds finish and failed ones get re-queued without
-                // a new commit, so those are refetched. NotStarted is reused
-                // only when the policy fetch worked: then it means the repo
-                // has no build policy, and refetching every poll would cost
-                // two requests per PR for nothing.
-                // ADO creates a PR's policy evaluations a little after it opens,
-                // and until then the list is empty as well. Later pushes reuse
-                // the existing evaluations (they show as queued), so only young
-                // PRs need the wait before "empty" can mean "no build policy".
-                let settled_in = chrono::Utc::now() - pr.created_at > chrono::Duration::minutes(10);
-                let reusable = match build_status {
-                    BuildStatus::Succeeded => true,
-                    BuildStatus::NotStarted => detail.policies_loaded && settled_in,
-                    BuildStatus::InProgress | BuildStatus::Failed => false,
-                };
-                if !commit_id.is_empty() && reusable {
-                    cache.insert(
-                        pr.id.to_string(),
-                        CachedBuildStatus {
-                            source_commit_id: commit_id,
-                            status: build_status.clone(),
-                        },
-                    );
-                }
-                pr.build_status = Some(build_status);
-            }
+        if let Some((provider, _)) = providers.iter().find(|(p, _)| p.name() == pr.id.provider) {
+            let provider = Arc::clone(provider);
+            let id = pr.id.clone();
+            queries.push(async move { (i, provider.get_detail(&id).await) });
         }
+    }
+
+    // Team reviews put dozens of PRs through here on a cold cache, at two
+    // requests each, so they're fetched a few at a time instead of in turn.
+    let details: Vec<_> = futures::stream::iter(queries)
+        .buffer_unordered(8)
+        .collect()
+        .await;
+
+    for (i, detail) in details {
+        let Ok(detail) = detail else { continue };
+        let pr = &mut prs[i];
+        let commit_id = pr.source_commit_id.clone().unwrap_or_default();
+        let build_status = derive_build_status(&detail.policies);
+        // Running builds finish and failed ones get re-queued without
+        // a new commit, so those are refetched. NotStarted is reused
+        // only when the policy fetch worked: then it means the repo
+        // has no build policy, and refetching every poll would cost
+        // two requests per PR for nothing.
+        // ADO creates a PR's policy evaluations a little after it opens,
+        // and until then the list is empty as well. Later pushes reuse
+        // the existing evaluations (they show as queued), so only young
+        // PRs need the wait before "empty" can mean "no build policy".
+        let settled_in = chrono::Utc::now() - pr.created_at > chrono::Duration::minutes(10);
+        let reusable = match build_status {
+            BuildStatus::Succeeded => true,
+            BuildStatus::NotStarted => detail.policies_loaded && settled_in,
+            BuildStatus::InProgress | BuildStatus::Failed => false,
+        };
+        if !commit_id.is_empty() && reusable {
+            cache.insert(
+                pr.id.to_string(),
+                CachedBuildStatus {
+                    source_commit_id: commit_id,
+                    status: build_status.clone(),
+                },
+            );
+        }
+        pr.build_status = Some(build_status);
     }
 }
 
