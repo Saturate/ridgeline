@@ -20,7 +20,15 @@ impl AzureDevOpsClient {
 
     pub fn with_credential(base_url: &str, credential: Arc<dyn Credential>) -> Self {
         Self {
-            client: Client::new(),
+            // reqwest has no timeout by default, and one stalled request
+            // would hold up the whole poll. Generous enough for Azure's
+            // slower org-wide PR queries; a timeout is retried like any
+            // other network error.
+            client: Client::builder()
+                .connect_timeout(Duration::from_secs(10))
+                .timeout(Duration::from_secs(30))
+                .build()
+                .expect("HTTP client with timeouts"),
             base_url: base_url.trim_end_matches('/').to_string(),
             credential,
         }
@@ -98,9 +106,20 @@ impl AzureDevOpsClient {
                 });
             }
 
-            return response.json::<T>().await.map_err(|e| {
-                ProviderError::Deserialize(format!("failed to parse response from {url}: {e}"))
-            });
+            match response.json::<T>().await {
+                Ok(value) => return Ok(value),
+                // The timeout covers reading the body too, and the big
+                // org-wide PR lists are the likeliest to run into it there.
+                Err(e) if e.is_timeout() => {
+                    last_err = Some(ProviderError::Http(e));
+                    continue;
+                }
+                Err(e) => {
+                    return Err(ProviderError::Deserialize(format!(
+                        "failed to parse response from {url}: {e}"
+                    )));
+                }
+            }
         }
 
         Err(last_err.unwrap_or_else(|| ProviderError::Other("max retries exceeded".to_string())))

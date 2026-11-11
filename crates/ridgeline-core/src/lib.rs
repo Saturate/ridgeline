@@ -131,7 +131,10 @@ pub async fn enrich_build_status(
         if let Some((provider, _)) = providers.iter().find(|(p, _)| p.name() == pr.id.provider) {
             let provider = Arc::clone(provider);
             let id = pr.id.clone();
-            queries.push(async move { (i, provider.get_detail(&id).await) });
+            queries.push(async move {
+                let asked_at = chrono::Utc::now();
+                (i, provider.get_detail(&id).await, asked_at)
+            });
         }
     }
 
@@ -142,7 +145,7 @@ pub async fn enrich_build_status(
         .collect()
         .await;
 
-    for (i, detail) in details {
+    for (i, detail, asked_at) in details {
         let Ok(detail) = detail else { continue };
         let pr = &mut prs[i];
         let commit_id = pr.source_commit_id.clone().unwrap_or_default();
@@ -156,7 +159,10 @@ pub async fn enrich_build_status(
         // and until then the list is empty as well. Later pushes reuse
         // the existing evaluations (they show as queued), so only young
         // PRs need the wait before "empty" can mean "no build policy".
-        let settled_in = chrono::Utc::now() - pr.created_at > chrono::Duration::minutes(10);
+        // Measured when the request went out, not here: a slow response, or
+        // a slow neighbour in the batch, could otherwise push a young PR past
+        // the threshold.
+        let settled_in = asked_at - pr.created_at > chrono::Duration::minutes(10);
         let reusable = match build_status {
             BuildStatus::Succeeded => true,
             BuildStatus::NotStarted => detail.policies_loaded && settled_in,
