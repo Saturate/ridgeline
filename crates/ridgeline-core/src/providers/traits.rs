@@ -11,6 +11,13 @@ pub enum ProviderError {
     #[error("authentication failed for provider '{provider}': {message}")]
     Auth { provider: String, message: String },
 
+    /// The provider answered 401/403. Kept apart from `Auth`, which also
+    /// covers failing to get a token at all (`az` not running, a refresh
+    /// that hit the network), because only a real answer says the token
+    /// lacks access.
+    #[error("authentication failed for provider '{provider}': {message}")]
+    Denied { provider: String, message: String },
+
     #[error("API error from {provider}: {status} {message}")]
     Api {
         provider: String,

@@ -80,7 +80,18 @@ impl AzureDevOpsProvider {
             .team_ids()
             .await?
             .iter()
-            .map(|id| self.client.list_pull_requests_org(Some(id), None))
+            .map(|id| async move {
+                match self.client.list_pull_requests_org(Some(id), None).await {
+                    // Not seen in practice (the org query seems to just leave
+                    // out repos you can't read), but if one team is refused,
+                    // failing here would freeze Reviewing on every poll.
+                    Err(ProviderError::Denied { message, .. }) => {
+                        eprintln!("provider {}: skipped team {id}: {message}", self.name);
+                        Ok(Vec::new())
+                    }
+                    result => result,
+                }
+            })
             .collect();
         let per_team: Vec<Vec<AdoPullRequest>> = futures::stream::iter(queries)
             // Some people sit in dozens of teams; with Azure CLI auth every
@@ -91,7 +102,8 @@ impl AzureDevOpsProvider {
         Ok(per_team.into_iter().flatten().collect())
     }
 
-    /// A PAT without the Project and Team (Read) scope gets 401/403 here.
+    /// A PAT without the Project and Team (Read) scope gets 401/403 here,
+    /// while the PR queries before it went through.
     /// That is a setup choice, not an outage, so it's logged once and the
     /// direct reviews carry on. Any other failure is returned so the poller
     /// keeps the previous list instead of reporting team PRs as gone.
@@ -105,14 +117,15 @@ impl AzureDevOpsProvider {
             .await;
         match result {
             Ok(ids) => Ok(ids),
-            Err(ProviderError::Auth { message, .. }) => {
+            Err(ProviderError::Denied { message, .. }) => {
                 eprintln!(
                     "provider {}: can't list your teams, so PRs assigned to them are skipped \
                      (the token needs Project and Team read access): {message}",
                     self.name
                 );
+                // Loses to a concurrent init that did succeed; use its ids then.
                 let _ = self.team_ids.set(Vec::new());
-                Ok(&[])
+                Ok(self.team_ids.get().map_or(&[], Vec::as_slice))
             }
             Err(e) => Err(e),
         }

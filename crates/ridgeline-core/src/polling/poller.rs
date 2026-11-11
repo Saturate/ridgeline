@@ -84,7 +84,7 @@ impl Poller {
 fn poll_error(provider: String, error: ProviderError) -> PollError {
     let kind = match &error {
         ProviderError::Http(_) => PollErrorKind::Network,
-        ProviderError::Auth { .. } => PollErrorKind::Auth,
+        ProviderError::Auth { .. } | ProviderError::Denied { .. } => PollErrorKind::Auth,
         ProviderError::Api { status, .. } if *status >= 500 => PollErrorKind::Server,
         ProviderError::Api { .. } => PollErrorKind::Unknown,
         ProviderError::Deserialize(_) => PollErrorKind::Parse,
