@@ -19,7 +19,8 @@ use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::tooltip::Tooltip;
 use ridgeline_core::CachedBuildStatus;
 use ridgeline_core::config::model::{
-    Config, ProviderConfig, ProviderIndicator, TabConfig, TabDisplay, TabSource, WaitingOn,
+    Config, DraftFilter, ProviderConfig, ProviderIndicator, TabConfig, TabDisplay, TabSource,
+    WaitingOn,
 };
 use ridgeline_core::notifications::tracker::ChangeTracker;
 use ridgeline_core::polling::poller::Poller;
@@ -642,11 +643,14 @@ impl Ridgeline {
         // just hide or keep everything (the dialog hides it there too).
         let authored_only;
         let filter = if tab.source == TabSource::Authored
-            && (tab.filter.assigned.is_some() || tab.filter.required_only)
+            && (tab.filter.assigned.is_some()
+                || tab.filter.required_only
+                || tab.filter.sent_back.is_some())
         {
             authored_only = ridgeline_core::config::model::TabFilter {
                 assigned: None,
                 required_only: false,
+                sent_back: None,
                 ..tab.filter.clone()
             };
             &authored_only
@@ -683,7 +687,6 @@ impl Ridgeline {
                     }
                 }
                 if let Some(ref drafts) = tab.filter.drafts {
-                    use ridgeline_core::config::model::DraftFilter;
                     match drafts {
                         DraftFilter::Hide if pr.is_draft => return false,
                         DraftFilter::Only if !pr.is_draft => return false,
@@ -918,8 +921,23 @@ impl Ridgeline {
                 .filter(|_| t.source == TabSource::Authored);
             (&t.source, waiting_on)
         }) {
+            _ if tab.is_some_and(|t| {
+                t.source != TabSource::Authored && t.filter.sent_back == Some(DraftFilter::Only)
+            }) =>
+            {
+                "Nothing you sent back is still open."
+            }
             Some((_, Some(&WaitingOn::Author))) => "Nothing needs you right now.",
             Some((_, Some(&WaitingOn::Reviewers))) => "No PRs are waiting on reviewers.",
+            // With your approvals or sent-back PRs filtered out, an empty tab
+            // doesn't mean nothing is assigned to you.
+            Some((TabSource::Reviewing, None))
+                if tab.is_some_and(|t| {
+                    t.filter.hide_approved_by_me || t.filter.sent_back == Some(DraftFilter::Hide)
+                }) =>
+            {
+                "No reviews waiting on you."
+            }
             Some((TabSource::Reviewing, None)) => "No reviews assigned to you.",
             Some((TabSource::Authored, None)) => "You have no open PRs.",
             _ => "No pull requests match this tab's filters.",

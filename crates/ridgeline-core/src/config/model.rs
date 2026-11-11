@@ -117,10 +117,22 @@ fn default_tabs() -> Vec<TabConfig> {
             display: TabDisplay::Reviewing,
             enabled: true,
             // Drafts aren't ready for review; the Tauri app hid them by default too.
-            // Once you've approved, the PR isn't waiting on you anymore.
+            // Once you've approved, the PR isn't waiting on you anymore, and
+            // the ones you sent back have their own tab.
             filter: TabFilter {
                 drafts: Some(DraftFilter::Hide),
                 hide_approved_by_me: true,
+                sent_back: Some(DraftFilter::Hide),
+                ..TabFilter::default()
+            },
+        },
+        TabConfig {
+            label: "Sent back".into(),
+            source: TabSource::Reviewing,
+            display: TabDisplay::Reviewing,
+            enabled: true,
+            filter: TabFilter {
+                sent_back: Some(DraftFilter::Only),
                 ..TabFilter::default()
             },
         },
@@ -242,6 +254,11 @@ pub struct TabFilter {
     /// doesn't mean you looked at it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub hide_approved_by_me: bool,
+    /// PRs where your own vote is Waiting for author or Rejected: you've
+    /// had your say and the next move is the author's. Same hide/only/show
+    /// values as `drafts`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sent_back: Option<DraftFilter>,
     /// Patterns matched against provider, project and repository names.
     /// A leading `!` excludes; see `crate::filters::matches_patterns`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
