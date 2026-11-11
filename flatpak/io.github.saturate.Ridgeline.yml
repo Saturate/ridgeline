@@ -1,0 +1,50 @@
+id: io.github.saturate.Ridgeline
+runtime: org.gnome.Platform
+runtime-version: '47'
+sdk: org.gnome.Sdk
+command: ridgeline
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  - --share=network
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.portal.OpenURI
+
+modules:
+  - name: binary-install
+    buildsystem: simple
+    sources:
+      - type: file
+        url: https://github.com/Saturate/ridgeline/releases/download/v0.5.0/Ridgeline_0.5.0_amd64.deb
+        sha256: d6de2310fa72b6cb775da47a5504067503f88bdce1b9a95f785f7b29147fe84b
+        dest-filename: ridgeline.deb
+        only-arches:
+          - x86_64
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/Saturate/ridgeline/releases/latest
+          version-query: .tag_name | sub("^v"; "")
+          url-query: .assets[] | select(.name | test("amd64\\.deb$")) | .browser_download_url
+      - type: file
+        path: io.github.saturate.Ridgeline.desktop
+      - type: file
+        path: io.github.saturate.Ridgeline.metainfo.xml
+    build-commands:
+      # Extract .deb
+      - ar x ridgeline.deb
+      - tar xf data.tar.gz
+
+      # Install binary
+      - install -Dm755 usr/bin/ridgeline /app/bin/ridgeline
+
+      # Install icons
+      - install -Dm644 usr/share/icons/hicolor/256x256@2/apps/ridgeline.png /app/share/icons/hicolor/512x512/apps/io.github.saturate.Ridgeline.png || true
+      - install -Dm644 usr/share/icons/hicolor/128x128/apps/ridgeline.png /app/share/icons/hicolor/128x128/apps/io.github.saturate.Ridgeline.png || true
+      - install -Dm644 usr/share/icons/hicolor/32x32/apps/ridgeline.png /app/share/icons/hicolor/32x32/apps/io.github.saturate.Ridgeline.png || true
+
+      # Install desktop file and metainfo
+      - install -Dm644 io.github.saturate.Ridgeline.desktop /app/share/applications/io.github.saturate.Ridgeline.desktop
+      - install -Dm644 io.github.saturate.Ridgeline.metainfo.xml /app/share/metainfo/io.github.saturate.Ridgeline.metainfo.xml
