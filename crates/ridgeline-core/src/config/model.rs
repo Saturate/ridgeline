@@ -109,7 +109,7 @@ fn default_true() -> bool {
     true
 }
 
-fn default_tabs() -> Vec<TabConfig> {
+pub fn default_tabs() -> Vec<TabConfig> {
     vec![
         TabConfig {
             label: "Reviewing".into(),
