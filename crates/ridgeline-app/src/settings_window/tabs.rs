@@ -14,7 +14,7 @@ use gpui_kit::*;
 use gpui_kit::component::input::InputState;
 use ridgeline_core::config::loader;
 use ridgeline_core::config::model::{
-    Assigned, DraftFilter, TabConfig, TabDisplay, TabFilter, TabSource, WaitingOn,
+    Assigned, DraftFilter, TabConfig, TabDisplay, TabFilter, TabSource, WaitingOn, default_tabs,
 };
 
 use super::{AppConfig, SettingsWindow, choice, field_label, footer_slot, labeled_field, list_row};
@@ -102,6 +102,33 @@ fn update_tabs(cx: &mut App, f: impl FnOnce(&mut Vec<TabConfig>)) {
     f(&mut config.0.general.tabs);
     let _ = loader::save_config(&config.0);
     cx.refresh_windows();
+}
+
+/// Replaces every tab, custom ones included, so it asks first.
+fn confirm_reset_tabs(window: &mut Window, cx: &mut App) {
+    window.open_dialog(cx, |dialog, _, _| {
+        dialog
+            .title("Reset tabs to defaults?")
+            .w(px(440.))
+            .child(div().text_sm().child(
+                "Your tabs and their filters are replaced with the default set. \
+                 Tabs you added are removed.",
+            ))
+            .footer(
+                DialogFooter::new()
+                    .child(footer_slot(DialogClose::new().child(
+                        Button::new("tab-reset-cancel").label("Cancel").outline(),
+                    )))
+                    .child(footer_slot(
+                        DialogAction::new()
+                            .child(Button::new("tab-reset-ok").label("Reset").danger()),
+                    )),
+            )
+            .on_ok(|_, _, cx| {
+                update_tabs(cx, |tabs| *tabs = default_tabs());
+                true
+            })
+    });
 }
 
 fn pair(left: impl IntoElement, right: impl IntoElement) -> impl IntoElement {
@@ -332,6 +359,14 @@ impl SettingsWindow {
                                     let _ = open::that(path);
                                 }
                             }),
+                    )
+                    .child(
+                        Button::new("tab-reset")
+                            .ghost()
+                            .small()
+                            .icon(Icon::new(IconName::Undo2).size_3())
+                            .label("Reset to defaults")
+                            .on_click(|_, window, cx| confirm_reset_tabs(window, cx)),
                     )
                     .child(
                         Button::new("tab-add")
