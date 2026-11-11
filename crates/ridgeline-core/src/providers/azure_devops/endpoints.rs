@@ -33,6 +33,14 @@ impl AzureDevOpsClient {
         Ok(response.value)
     }
 
+    /// Teams the authenticated user belongs to, across every project in the org.
+    pub async fn list_my_teams(&self) -> Result<Vec<AdoTeam>, ProviderError> {
+        let response: ListResponse<AdoTeam> = self
+            .get("/_apis/teams?$mine=true&$top=1000&api-version=7.1-preview.3")
+            .await?;
+        Ok(response.value)
+    }
+
     /// List active pull requests for a project, optionally filtered by reviewer
     pub async fn list_pull_requests_by_project(
         &self,

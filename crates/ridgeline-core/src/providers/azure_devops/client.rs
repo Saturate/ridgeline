@@ -70,7 +70,7 @@ impl AzureDevOpsClient {
             if status == reqwest::StatusCode::UNAUTHORIZED
                 || status == reqwest::StatusCode::FORBIDDEN
             {
-                return Err(ProviderError::Auth {
+                return Err(ProviderError::Denied {
                     provider: self.base_url.clone(),
                     message: format!(
                         "HTTP {status} - check your {} credentials",

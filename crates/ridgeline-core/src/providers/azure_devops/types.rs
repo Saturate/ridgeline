@@ -61,6 +61,12 @@ pub struct AdoRepository {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AdoTeam {
+    pub id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AdoProject {
     pub id: String,
     pub name: String,

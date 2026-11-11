@@ -57,7 +57,7 @@ xattr -cr /Applications/Ridgeline.app
 
 On first launch, open Settings and add your Azure DevOps organization URL. Sign in with either:
 
-- a [Personal Access Token](https://learn.microsoft.com/en-us/azure/devops/organizations/accounts/use-personal-access-tokens-to-authenticate) with **Code (Read)** scope, or
+- a [Personal Access Token](https://learn.microsoft.com/en-us/azure/devops/organizations/accounts/use-personal-access-tokens-to-authenticate) with **Code (Read)** scope, plus **Project and Team (Read)** to see PRs assigned to your teams, or
 - **Azure CLI**: Ridgeline reuses your `az login` session, so run that first.
 
 Config is stored in `config.toml` at `~/Library/Application Support/ridgeline/` (macOS), `~/.config/ridgeline/` (Linux) or `%APPDATA%\ridgeline\` (Windows). Tokens are saved as plain files in the same folder.

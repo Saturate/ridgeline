@@ -1,18 +1,24 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use tokio::sync::OnceCell;
 
 use super::client::AzureDevOpsClient;
 use super::mapper;
+use super::types::AdoPullRequest;
 use crate::auth::Credential;
 use crate::config::model::{AzureDevOpsConfig, ProjectFilter};
 use crate::providers::traits::{PrProvider, ProviderError};
 use crate::providers::types::*;
 
+const TEAM_QUERY_CONCURRENCY: usize = 8;
+
 pub struct AzureDevOpsProvider {
     name: String,
     client: AzureDevOpsClient,
     projects: Vec<ProjectFilter>,
+    /// Team membership rarely changes, so it's looked up once per run.
+    team_ids: OnceCell<Vec<String>>,
 }
 
 impl AzureDevOpsProvider {
@@ -21,6 +27,7 @@ impl AzureDevOpsProvider {
             name: config.name.clone(),
             client: AzureDevOpsClient::new(&config.url, pat),
             projects: config.projects.clone(),
+            team_ids: OnceCell::new(),
         }
     }
 
@@ -29,6 +36,7 @@ impl AzureDevOpsProvider {
             name: config.name.clone(),
             client: AzureDevOpsClient::with_credential(&config.url, credential),
             projects: config.projects.clone(),
+            team_ids: OnceCell::new(),
         }
     }
 
@@ -37,6 +45,7 @@ impl AzureDevOpsProvider {
             name: name.to_string(),
             client: AzureDevOpsClient::new(url, pat),
             projects: Vec::new(),
+            team_ids: OnceCell::new(),
         }
     }
 
@@ -59,6 +68,67 @@ impl AzureDevOpsProvider {
             .map(|p| p.name.clone())
             .collect();
         Ok(invalid)
+    }
+
+    /// Active PRs where any of the user's teams is a reviewer.
+    async fn team_prs(&self) -> Result<Vec<AdoPullRequest>, ProviderError> {
+        use futures::{StreamExt, TryStreamExt};
+
+        // Built up front: a closure in `.map()` trips the Send bound async_trait
+        // puts on the returned future.
+        let queries: Vec<_> = self
+            .team_ids()
+            .await?
+            .iter()
+            .map(|id| async move {
+                match self.client.list_pull_requests_org(Some(id), None).await {
+                    // Not seen in practice (the org query seems to just leave
+                    // out repos you can't read), but if one team is refused,
+                    // failing here would freeze Reviewing on every poll.
+                    Err(ProviderError::Denied { message, .. }) => {
+                        eprintln!("provider {}: skipped team {id}: {message}", self.name);
+                        Ok(Vec::new())
+                    }
+                    result => result,
+                }
+            })
+            .collect();
+        let per_team: Vec<Vec<AdoPullRequest>> = futures::stream::iter(queries)
+            // Some people sit in dozens of teams; with Azure CLI auth every
+            // request also spawns `az`, so the fan-out is capped.
+            .buffer_unordered(TEAM_QUERY_CONCURRENCY)
+            .try_collect()
+            .await?;
+        Ok(per_team.into_iter().flatten().collect())
+    }
+
+    /// A PAT without the Project and Team (Read) scope gets 401/403 here,
+    /// while the PR queries before it went through.
+    /// That is a setup choice, not an outage, so it's logged once and the
+    /// direct reviews carry on. Any other failure is returned so the poller
+    /// keeps the previous list instead of reporting team PRs as gone.
+    async fn team_ids(&self) -> Result<&[String], ProviderError> {
+        let result = self
+            .team_ids
+            .get_or_try_init(|| async {
+                let teams = self.client.list_my_teams().await?;
+                Ok::<_, ProviderError>(teams.into_iter().map(|t| t.id).collect())
+            })
+            .await;
+        match result {
+            Ok(ids) => Ok(ids),
+            Err(ProviderError::Denied { message, .. }) => {
+                eprintln!(
+                    "provider {}: can't list your teams, so PRs assigned to them are skipped \
+                     (the token needs Project and Team read access): {message}",
+                    self.name
+                );
+                // Loses to a concurrent init that did succeed; use its ids then.
+                let _ = self.team_ids.set(Vec::new());
+                Ok(self.team_ids.get().map_or(&[], Vec::as_slice))
+            }
+            Err(e) => Err(e),
+        }
     }
 
     /// Fetch PRs org-wide for the user, plus any extras from configured projects.
@@ -85,6 +155,18 @@ impl AzureDevOpsProvider {
                 &self.name,
                 self.client.base_url(),
             ));
+        }
+
+        // Azure lists a PR under "Assigned to my teams" when one of your teams
+        // is a reviewer, but `reviewerId=<you>` only matches you by name.
+        if let Some(me) = reviewer_id {
+            for ado_pr in new_team_prs(&mut seen_ids, self.team_prs().await?, me) {
+                all_prs.push(mapper::map_pull_request(
+                    &ado_pr,
+                    &self.name,
+                    self.client.base_url(),
+                ));
+            }
         }
 
         // Extra: configured projects add PRs the user isn't directly on.
@@ -208,5 +290,64 @@ impl PrProvider for AzureDevOpsProvider {
             pr_id.repository,
             pr_id.number
         )
+    }
+}
+
+/// Team PRs not already listed. Azure's team view leaves out your own PRs,
+/// even though your team is a reviewer on them.
+fn new_team_prs(
+    seen_ids: &mut std::collections::HashSet<u64>,
+    team_prs: Vec<AdoPullRequest>,
+    me: &str,
+) -> Vec<AdoPullRequest> {
+    team_prs
+        .into_iter()
+        .filter(|pr| pr.created_by.id != me && seen_ids.insert(pr.pull_request_id))
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+
+    use super::*;
+
+    fn pr(id: u64, author: &str) -> AdoPullRequest {
+        serde_json::from_value(serde_json::json!({
+            "pullRequestId": id,
+            "title": "t",
+            "status": "active",
+            "creationDate": "2026-11-01T00:00:00Z",
+            "sourceRefName": "refs/heads/a",
+            "targetRefName": "refs/heads/master",
+            "createdBy": { "id": author, "displayName": author },
+            "repository": { "id": "r", "name": "r", "project": { "id": "p", "name": "p" } },
+        }))
+        .unwrap()
+    }
+
+    fn ids(prs: &[AdoPullRequest]) -> Vec<u64> {
+        prs.iter().map(|p| p.pull_request_id).collect()
+    }
+
+    #[test]
+    fn team_prs_skip_already_listed_and_own() {
+        let mut seen = HashSet::from([1]);
+        let team = vec![pr(1, "bob"), pr(2, "me"), pr(3, "bob")];
+        assert_eq!(ids(&new_team_prs(&mut seen, team, "me")), vec![3]);
+    }
+
+    #[test]
+    fn pr_on_several_teams_is_listed_once() {
+        let mut seen = HashSet::new();
+        let team = vec![pr(5, "bob"), pr(6, "bob"), pr(5, "bob")];
+        assert_eq!(ids(&new_team_prs(&mut seen, team, "me")), vec![5, 6]);
+    }
+
+    #[test]
+    fn no_teams_adds_nothing() {
+        let mut seen = HashSet::from([1]);
+        assert!(new_team_prs(&mut seen, Vec::new(), "me").is_empty());
+        assert_eq!(seen, HashSet::from([1]));
     }
 }
